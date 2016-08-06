@@ -131,10 +131,9 @@ void setup ( void ) {
 	pinMode(LIMIT_END, INPUT_PULLUP);
 	
 	stepper.setMaxSpeed(HS24_MAX_SPEED);					// max steps/sec - 
-	//stepper.setPinsInverted (false, false, true);		// inverted SYBY pin on Alegro A498
-	//stepper.setEnablePin(STANDBY);							// for the Allegro A498 driver only
-	stepper.disableOutputs();									// don't energize the motors until user initiates movement
-	digitalWrite(STANDBY, LOW);								// set LOW to standby - internal pulldown in TB6612FNG
+	//stepper.setPinsInverted (false, false, true);		// inverted STBY pin on Allegro A4988
+	stepper.setEnablePin(STANDBY);							// set LOW to standby - internal pulldown in TB6612FNG
+	stepper.disableOutputs();									// don't energize the motors or enable controller until user initiates movement
 	
 	
 	attachInterrupt(digitalPinToInterrupt(LIMIT_MOTOR), endstopHit, FALLING);
@@ -211,9 +210,8 @@ void loop ( void ) {
 #endif
 		stepper.stop();
 		stepper.runSpeedToPosition();				// a necessary part of the stop mechanism
-		carriageState = PARKED;
+		carriageState = PARKED;						// only place this is set other than initial condition
 		stepper.disableOutputs();
-		digitalWrite(STANDBY, LOW);
 		break;
 		
 	case CARRIAGE_TRAVEL_REVERSE:
@@ -235,8 +233,10 @@ void loop ( void ) {
 		stepper.setCurrentPosition(0);
 		stepper.moveTo(targetPosition);
 		stepper.setSpeed(clockwise ? targetSpeed : (targetSpeed * -1.0));
-		stepper.enableOutputs();
-		digitalWrite(STANDBY, HIGH);
+		if ( carriageState == PARKED ) {
+			// enable the motor & controller
+			stepper.enableOutputs();
+		}
 		carriageState = CARRIAGE_TRAVEL;
 		travelStart = millis();
 		newMove = false;
