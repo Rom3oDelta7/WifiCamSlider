@@ -130,7 +130,7 @@ void setup ( void ) {
 	pinMode(LIMIT_MOTOR, INPUT);								// WeMos internal pullup resistor
 	pinMode(LIMIT_END, INPUT_PULLUP);
 	
-	stepper.setMaxSpeed(HS24_MAX_SPEED);					// max steps/sec - 
+	stepper.setMaxSpeed(HS24_MAX_SPEED);					// max steps/sec 
 	//stepper.setPinsInverted (false, false, true);		// inverted STBY pin on Allegro A4988
 	stepper.setEnablePin(STANDBY);							// set LOW to standby - internal pulldown in TB6612FNG
 	stepper.disableOutputs();									// don't energize the motors or enable controller until user initiates movement
@@ -186,7 +186,10 @@ void loop ( void ) {
 		counter = 0;
 	}
 #endif
-	// motion state machine - move flag always set outside of this FSM
+	/*
+	  motion state machine - move flag always set outside of this FSM
+	  NOTE: becuase of the WiFi interface, it is important to use the non-blocking stepper library calls for movement
+	*/
 	switch ( carriageState ) {
 	case CARRIAGE_TRAVEL:
 		/*
@@ -206,7 +209,7 @@ void loop ( void ) {
 	case CARRIAGE_STOP:
 #if DEBUG >= 1
 			// display this in phone interface   ZZZ
-			Serial.println(String("*** Traveled ") + String(targetPosition) + String(" steps in ") + String((float)(millis() - travelStart)/1000.0) + String(" sec"));
+			Serial.println(String("*** Traveled ") + String(targetPosition) + String(" steps in ") + String((float)((millis() - travelStart)/1000.0)) + String(" sec"));
 #endif
 		stepper.stop();
 		stepper.runSpeedToPosition();				// a necessary part of the stop mechanism
