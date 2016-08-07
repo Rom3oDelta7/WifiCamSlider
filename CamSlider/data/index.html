@@ -1,0 +1,169 @@
+<!DOCTYPE HTML>
+<HTML>
+	<!meta http-equiv="refresh" content="1">
+	<HEAD>
+		<TITLE>index.html</TITLE>
+	</HEAD>
+	<style type = "text/css">
+		body {
+			background-color: black;
+		}
+		h1 {
+			color: yellow;
+			font-size: 120%;
+			font-family: sans-serif;
+		}
+		p {
+			color: white;
+		}
+		label {
+			color: white;
+		}
+		legend {
+			font-size: 300%;
+			font-family: sans-serif;
+			color: cyan;
+		}
+		.sans {
+			font-family: sans-serif;
+		}
+		.big {
+			font-size: 300%;
+			font-family: sans-serif;
+		}
+		.bigtext {
+			font-size: 120%;
+			font-family: sans-serif;
+		}
+
+		.button {
+			background-color: #4CAF50; /* use green here to make this the default before sent by the ESP8266 HTTP server */
+			border: none;
+			color: white;
+			padding: 5px 50px;
+			text-align: center;
+			text-decoration: none;
+			display: inline-block;
+			font-size: 50px;
+			margin: 2px 40px;
+			cursor: pointer;
+		}
+
+		.greybkgd {background-color: #e7e7e7; color: black;} 		/* grey */ 
+		.greenbkgd {background-color: #4CAF50; color: white;} 	/*  green */
+		.redbkgd {background-color: #f44336; color: white;} 		/* red  */
+		.orangebkgd {background-color: #FFA500; color: white;}	/* orange */
+		.bluebkgd {background-color: blue; color: white; }			/* blue */
+
+		/* Style The Dropdown Button */
+		.dropbtn {
+			 background-color: #E7E7E7;
+			 color: black;
+			 padding: 16px;
+			 font-size: 16px;
+			 border: none;
+			 cursor: pointer;
+		}
+
+		/* The container <div> - needed to position the dropdown content */
+		.dropdown {
+			 position: relative;
+			 display: inline-block;
+		}
+
+		/* Dropdown Content (Hidden by Default) */
+		.dropdown-content {
+			 display: none;
+			 position: absolute;
+			 background-color: #f9f9f9;
+			 min-width: 500px;
+			 box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+		}
+
+		/* Links inside the dropdown */
+		.dropdown-content a {
+			 color: black;
+			 padding: 12px 16px;
+			 text-decoration: none;
+			 display: block;
+		}
+
+		/* Change color of dropdown links on hover */
+		.dropdown-content a:hover {background-color: #FFD700}
+
+		/* Show the dropdown menu on hover */
+		.dropdown:hover .dropdown-content {
+			 display: block;
+		}
+
+		/* Change the background color of the dropdown button when the dropdown content is shown */
+		.dropdown:hover .dropbtn {
+			 background-color: #FFD700;
+		}
+	</style>
+	<BODY>
+		<H1>CAMERA SLIDER CONTROL</H1>
+		<! every button must be in its own form so the GET request has ONLY that entry>
+
+		<fieldset>
+			<legend>Settings</legend>
+			<form class="big">
+				<input type="submit" class="button %MOTOR_CSS%" value="%MOTOR%" name="MOTOR_BTN"/>
+			</form>
+			<BR><BR>
+			<form class="big">
+				<div class="dropdown">
+				  <button class="dropbtn bigtext">Endstop Action</button>
+
+				  <div class="dropdown-content">
+					 <a href="STOP">Stop</a>
+					 <a href="RETURN">Reverse direction</a>
+					 <a href="CYCLE">Cycle once only</a>
+				  </div>
+				</div>
+			</form>
+		</fieldset>
+		<fieldset>
+			<legend>Slider Movement</legend>
+			<form class="big">
+				<label style="color:%DISTANCE_CSS%;">Distance (inches)</label>
+				<input type ="text" name="DIST" class ="bigtext" size="3" value="%DISTANCE%"/>
+				<input type="submit" class="button greybkgd" value="Submit" />
+			</form>
+			<BR>
+			<form class="big">
+				<label style="color:%DURATION_CSS%;">Duration (sec)</label>
+				<input type="text" name="DURN" class="bigtext" size="3" value="%DURATION%"/>
+				<input type="submit" class="button greybkgd" value="Submit" />
+			</form>
+			<BR>
+			<form class="big">
+				<label>Speed (steps/sec)</label>
+				<input type="text" name="SPEED" class="bigtext" size="3" value="%SPEED%" disabled />
+			</form>
+			<BR><BR>
+			<form class="big">
+				<input type="submit" class="button %DIRECTION_CSS%" value="%DIRECTION%" name="DIRECTION_BTN"/>
+			</form>
+			<form class="big">
+				<input type="submit" class="button %START_CSS%" value="%START%" name="START_BTN"/>
+			</form>
+		</fieldset>
+		<fieldset>
+			<form class="big">
+				<label>Travel status:</label>
+				<input type="text" id="travel" class="bigtext" value="%TRAVELED%" size="6" disabled />
+				<label> inches in </label>
+				<input type="text" id="elapsed" class="bigtext" value="%ELAPSED%" size="6" disabled />
+				<label> sec</label>
+			</form>
+		</fieldset>
+			<BR><BR>
+			<form  class="big" method="get">
+				<P>
+					<input type="submit" class="button greybkgd" value="Refresh" name="REFRESH_BTN"/>
+				</P>
+			</form>
+	</BODY>
+</HTML>
+

@@ -20,6 +20,7 @@
 #define DEBUG				2
 
 #include <AccelStepper.h>
+#include "CamSlider.h"
 
 /*================================= stepper motor interface ==============================
 
@@ -44,13 +45,6 @@ Future driver support:
 #define MOTORB2				5	
 #define STANDBY				16
 
-#define STEPS_PER_REV		200
-#define PULLEY_TEETH			20
-#define BELT_PITCH			2						// 2 MM
-#define STEPS_PER_MM			(STEPS_PER_REV / (BELT_PITCH * PULLEY_TEETH))
-#define INCH_TO_MM			25.4
-#define HS24_MAX_SPEED		592.0					// set calculator at http://www.daycounter.com/Calculators/Stepper-Motor-Calculator.phtml
-
 AccelStepper stepper(AccelStepper::FULL4WIRE, MOTORA1, MOTORA2, MOTORB1, MOTORB2);
 
 // ================================ slider controls =======================================
@@ -58,9 +52,6 @@ AccelStepper stepper(AccelStepper::FULL4WIRE, MOTORA1, MOTORA2, MOTORB1, MOTORB2
 #define LIMIT_END			13				// other endstop switch pin - use internal pullup
 
 #define BOUNCE_DELAY		300			// delay window in msec to ignore pin value fluctuation
-
-typedef enum { STOP_HERE, REVERSE, ONE_CYCLE } EndstopMode;
-typedef enum { CARRIAGE_STOP, CARRIAGE_TRAVEL, CARRIAGE_TRAVEL_REVERSE, PARKED } CarriageMode;
 
 volatile	bool				newMove = false;							// true when we need to initiate a new move
 volatile bool				clockwise = true;
@@ -72,7 +63,12 @@ volatile unsigned long	debounceStart = 0;						// start of debounce window
 
 long							targetPosition = 0;						// inches to travel
 float							targetSpeed = 0.0;						// speed in steps/second
+unsigned long				travelStart = 0;							// start of curent carriage movement
+int							stepsTaken = 0;							// counts steps actually executed
+bool							running = false;							// true iff moving the carriage
 
+extern void setupWiFi(void);
+extern void WiFiService(void);
 
 /*
  endstop ISR (used for both endstops)
@@ -138,15 +134,17 @@ void setup ( void ) {
 	
 	attachInterrupt(digitalPinToInterrupt(LIMIT_MOTOR), endstopHit, FALLING);
 	attachInterrupt(digitalPinToInterrupt(LIMIT_END), endstopHit, FALLING);
+	
+	setupWiFi();
 }
 
  
 void loop ( void ) {
-	static long	travelStart = 0;
 	
 	yield();
+	WiFiService();
 
-#if DEBUG >= 2
+#if DEBUG >= 3
 	// manual inputs for debugging - note that motor speed will be significantly slower if debug statements are being output
 	static bool askForInput = true;
 	
@@ -161,7 +159,7 @@ void loop ( void ) {
 		elapsed = Serial.parseInt();
 
 		if ( (inches > 0) && (elapsed > 0) ) {
-			targetPosition = (long)(STEPS_PER_MM * inches * INCH_TO_MM);			// # of steps to move
+			targetPosition = (long)INCHES_TO_STEPS(inches);
 			targetSpeed = (float)(targetPosition / elapsed);							// steps per second
 			newMove = true;
 			askForInput = true;
@@ -187,8 +185,8 @@ void loop ( void ) {
 	}
 #endif
 	/*
-	  motion state machine - move flag always set outside of this FSM
-	  NOTE: becuase of the WiFi interface, it is important to use the non-blocking stepper library calls for movement
+	  motion state machine - move flag always set OUTSIDE of this FSM
+	  NOTE: becuase of the WiFi interface, it is essential to use the non-blocking stepper library calls for movement
 	*/
 	switch ( carriageState ) {
 	case CARRIAGE_TRAVEL:
@@ -199,7 +197,10 @@ void loop ( void ) {
 		 always increases positively regardless of direction (since it is subtracting a negative number in CCW rotation)
 		*/
 		if ( abs(stepper.currentPosition()) < targetPosition ) {
-			stepper.runSpeed();								// constant speed - no acceleration
+			// constant speed - no acceleration
+			if ( stepper.runSpeed() ) {
+				++stepsTaken;
+			}								
 		} else {
 			// target reached - stop the motor (and subsequently park it)
 			carriageState = CARRIAGE_STOP;
@@ -215,10 +216,11 @@ void loop ( void ) {
 		stepper.runSpeedToPosition();				// a necessary part of the stop mechanism
 		carriageState = PARKED;						// only place this is set other than initial condition
 		stepper.disableOutputs();
+		running = false;
 		break;
 		
 	case CARRIAGE_TRAVEL_REVERSE:
-		// stop the motion. move flag will be set in the ISR so new (opposite) movement will be initiaited below
+		// stop the motion in the current direction - move flag will be set in the ISR so new (opposite) movement will be initiaited below
 		stepper.stop();
 		stepper.runSpeedToPosition();
 		break;
@@ -237,11 +239,13 @@ void loop ( void ) {
 		stepper.moveTo(targetPosition);
 		stepper.setSpeed(clockwise ? targetSpeed : (targetSpeed * -1.0));
 		if ( carriageState == PARKED ) {
-			// enable the motor & controller
+			// enable the motor & controller only if it had been turned off
 			stepper.enableOutputs();
 		}
 		carriageState = CARRIAGE_TRAVEL;
 		travelStart = millis();
+		running = true;
+		stepsTaken = 0;
 		newMove = false;
 	}
  }
