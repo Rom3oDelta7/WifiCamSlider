@@ -52,7 +52,10 @@ extern bool							running;					// true iff moving the carriage
 #define ELAPSED_VAR				"%ELAPSED%"				// elapsed time of last move
 
 
-#define	INDEX_FILE				"/index.html"				// root HTML file (SPIFFS) name (static content)
+// string objects for (static) filesystem contents
+#define BODY_FILE					"/body.html"				// html code <body>
+#define CSS_FILE					"/css.html"					// static CSS HTML contents to reduce burden on String objects
+#define STRING_MAX				3000
 
 
 /*
@@ -123,7 +126,8 @@ const struct {
 
 
 WiFiServer	server(80);						// web server instance
-String		indexFile;						// on-board flash file system in String form
+String		bodyFile;						// String copy of body file segment
+String		cssFile;							// String copy of CSS file segment	
 WiFiClient	client; 							// client stream
 
 #define MAX_TRAVEL_DISTANCE	80			// maximum possible travel distance (inches)
@@ -225,27 +229,53 @@ void setupWiFi ( void ) {
 #endif	
 
 	// open the HTML file on the on-board FS and read it into a String (note that this string is never modified)
-	File serverFile = SPIFFS.open(INDEX_FILE, "r");
+	File serverFile = SPIFFS.open(BODY_FILE, "r");
+	bodyFile.reserve(STRING_MAX);				// ZZZ DBEUG ZZZ
 	if ( serverFile ) {
-		while ( serverFile.available() ) {
-			indexFile += (char)serverFile.read();
+		if ( serverFile.available() ) {
+			bodyFile = serverFile.readString();
 		}
 		serverFile.close();;
 	} else {
+#ifdef DEBUG
+		Serial.println("error opening BODY file");
+#endif
+		//errorLED(true);						// blinking ZZZZ add LED to schematic & setup()
+	}
+	
+	// open the CSS file on the on-board FS and read it into a String (note that this string is never modified)
+	serverFile = SPIFFS.open(CSS_FILE, "r");
+	cssFile.reserve(STRING_MAX);				// ZZZ DBEUG ZZZ
+	if ( serverFile ) {
+		if ( serverFile.available() ) {
+			cssFile = serverFile.readString();
+		}
+		serverFile.close();;
+	} else {
+#ifdef DEBUG
+		Serial.println("error opening CSS file");
+#endif
 		//errorLED(true);						// blinking ZZZZ add LED to schematic & setup()
 	}
 }
 
 /*
-  send string as formatted HTML to client
+  send body string as formatted HTML to client
+  Because of issues in the String class, we need to output complete HTML file in segments (header, CSS, working HTML code)
 */
-void sendHTML ( const int code, const char *content_type, const String &content ) {
+void sendHTML ( const int code, const char *content_type, const String &body ) {
 	// header
 	client.println(String("HTTP/1.1 ") + String(code) + String(" OK"));
 	client.println(String("Content-Type: ") + String(content_type));
 	client.println("Connection: close\n");
-	// send content
-	client.println(content);
+	client.println("<!DOCTYPE HTML> <HTML> <HEAD> <TITLE>index.html</TITLE> </HEAD>");
+	
+	// send CSS file contents
+	client.println(cssFile);
+	
+	// send body
+	client.println(body);
+	client.println("</HTML>");
 }
 
 /*
@@ -254,7 +284,7 @@ void sendHTML ( const int code, const char *content_type, const String &content 
  stream to the client
 */
 void sendResponse ( const T_Action actionType, const String &url ) {
-	String indexModified = indexFile;								// all changes made to this String
+	String indexModified = bodyFile;								// all changes made to this String
 
 #if DEBUG > 0
 	Serial.print("ACTION: ");
@@ -269,6 +299,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 	  Because the CSS colors for distance and duration must ALWAYS be substituted, we set the normal defaults first
 	  then change as necessary below - cleaner than the alternative of complex logic
 	*/
+	indexModified.reserve(STRING_MAX);													// ZZZ DBEUG ZZZ
 	indexModified.replace(String(DISTANCE_CSS), String("white"));
 	indexModified.replace(String(DURATION_CSS), String("white"));
 	
