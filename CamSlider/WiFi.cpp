@@ -264,6 +264,13 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 	Serial.println("\nIndex file, unmodified:");
 	Serial.print(indexModified);
 #endif
+
+	/*
+	  Because the CSS colors for distance and duration must ALWAYS be substituted, we set the normal defaults first
+	  then change as necessary below - cleaner than the alternative of complex logic
+	*/
+	indexModified.replace(String(DISTANCE_CSS), String("white"));
+	indexModified.replace(String(DURATION_CSS), String("white"));
 	
 	//process user action
 	if ( actionType != IGNORE ) {
@@ -331,23 +338,15 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 					carriageState = CARRIAGE_STOP;
 				} else {
 					if ( targetPosition > 0 ) {
-						indexModified.replace(String(DISTANCE_CSS), String("white"));
 						if ( travelDuration > 0 ) {
 							// all conditions satisfied - plan a new move
 							targetSpeed = constrain((float)(targetPosition / travelDuration), 1.0, HS24_MAX_SPEED);	// steps per second
 							newMove = true;																									// this flag triggers a new move
-							indexModified.replace(String(DURATION_CSS), String("white"));
 						} else {
 							indexModified.replace(String(DURATION_CSS), String("red"));
 						}
 					} else {
 						indexModified.replace(String(DISTANCE_CSS), String("red"));
-						// now check for duration just to set correct color
-						if ( travelDuration > 0 ) {
-							indexModified.replace(String(DURATION_CSS), String("white"));
-						} else {
-							indexModified.replace(String(DURATION_CSS), String("red"));
-						}
 					}
 				}
 			} else {
