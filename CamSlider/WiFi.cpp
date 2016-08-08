@@ -52,6 +52,7 @@ extern bool							running;					// true iff moving the carriage
 #define START_VAR					"%START%"				// running/standby
 #define TRAVELED_VAR				"%TRAVELED%"			// distance traveled in last move
 #define ELAPSED_VAR				"%ELAPSED%"				// elapsed time of last move
+#define MEASURED_VAR				"%MEAS_SPEED%"			// actual speed (vs target)
 
 
 // string objects for (static) filesystem contents
@@ -407,7 +408,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		
 		// calculate speed
 		if ( (targetPosition > 0) && (travelDuration > 0) ) {
-			targetSpeed = constrain((float)(targetPosition / travelDuration), 1.0, HS24_MAX_SPEED);	// steps per second																								// this flag triggers a new move
+			targetSpeed = constrain((float)(targetPosition / travelDuration), 1.0, HS24_MAX_SPEED);	// steps per second
 		}
 		
 		// substitute current data variables for the placeholders in the base HTML file
@@ -434,17 +435,26 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 
 		indexModified.replace(String(DISTANCE_VAR), String(travelDistance));
 		indexModified.replace(String(DURATION_VAR), String(travelDuration));
-		indexModified.replace(String(SPEED_VAR), String(targetSpeed));
+		if ( travelDuration > 0 ) {
+			indexModified.replace(String(SPEED_VAR), String((float)(travelDistance / travelDuration), 2));
+		} else {
+			indexModified.replace(String(SPEED_VAR), String(" "));
+		}
 		indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Forward") : String("Reverse"));
 		indexModified.replace(String(START_VAR), newMove ? String("Running") : String("Standby"));
 		// stepsTaken will either have the running running total or the total from the last run (or 0 if never run, of course)
 		indexModified.replace(String(TRAVELED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)), 2));
 		if ( running ) {
-			indexModified.replace(String(ELAPSED_VAR), String((float)((millis() - travelStart)/1000.0), 2));
+			float t_duration = (float)((millis() - travelStart)/1000.0);
+			indexModified.replace(String(ELAPSED_VAR), String(t_duration, 2));
+			indexModified.replace(String(MEASURED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)/t_duration), 2));
 		} else if ( lastRunDuration ) {
-			indexModified.replace(String(ELAPSED_VAR), String((float)(lastRunDuration/1000.0), 2));
+			float t_duration = (float)(lastRunDuration/1000.0);
+			indexModified.replace(String(ELAPSED_VAR), String(t_duration, 2));
+			indexModified.replace(String(MEASURED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)/t_duration), 2));
 		} else {
 			indexModified.replace(String(ELAPSED_VAR), String(" "));
+			indexModified.replace(String(MEASURED_VAR), String(" "));
 		}
 		
 		// change REMAINING color placeholders to corresponding CSS to match current state

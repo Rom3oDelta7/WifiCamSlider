@@ -1,15 +1,17 @@
 
-<BODY>
+	<BODY>
 		<H1>CAMERA SLIDER CONTROL</H1>
 		<! every button must be in its own form so the GET request has ONLY that entry>
 
 		<fieldset>
 			<legend>Settings</legend>
 			<form class="big">
+				<label>Motor</label>
 				<input type="submit" class="button %MOTOR_CSS%" value="%MOTOR%" name="MOTOR_BTN" />
 			</form>
 			<BR><BR>
 			<form class="big">
+				<label>Endstop Action</label>
 				<input type="submit" class="button %ENDSTOP_CSS%" value="%ENDSTOP%" name="ENDSTOP_BTN" />
 			</form>
 			<fieldset>
@@ -27,24 +29,30 @@
 				</form>
 				<BR>
 				<form class="big">
-					<label>Speed (steps/sec)</label>
+					<label>Speed (in/sec)</label>
 					<input type="text" name="SPEED" class="bigtext" size="6" value="%SPEED%" disabled />
 				</form>
 				<BR><BR>
 				<form class="big">
+					<label>Direction</label>
 					<input type="submit" class="button %DIRECTION_CSS%" value="%DIRECTION%" name="DIRECTION_BTN"/>
 				</form>
 				<form class="big">
+				<label>Run</label>
 					<input type="submit" class="button %START_CSS%" value="%START%" name="START_BTN"/>
 				</form>
 			</fieldset>
 			<fieldset>
+				<legend>Status</legend>
 				<form class="big">
-					<label>Travel status:</label>
+					<label>Distance (in):</label>
 					<input type="text" id="travel" class="bigtext" value="%TRAVELED%" size="6" disabled />
-					<label> inches in </label>
+					<BR>
+					<label>Time (sec):</label>
 					<input type="text" id="elapsed" class="bigtext" value="%ELAPSED%" size="6" disabled />
-					<label> sec</label>
+					<BR>
+					<label>Speed (in/sec)</label>
+					<input type="text" id="meas" class="bigtext" value="%MEAS_SPEED%" size="6" disabled />
 				</form>
 			</fieldset>
 		</fieldset>
@@ -55,5 +63,4 @@
 			</P>
 		</form>
 	</BODY>
-
 
