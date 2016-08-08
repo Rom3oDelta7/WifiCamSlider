@@ -60,23 +60,26 @@ volatile CarriageMode	carriageState = PARKED;					// current state of the carria
 volatile bool				debounce = false;							// ISR debounce control flag
 volatile unsigned long 	currentTime = 0;							// set in loop() so we don't have to call it in the ISR
 volatile unsigned long	debounceStart = 0;						// start of debounce window
+volatile bool				plannedMoveEnd = false;					// true if calling endOfTravel for a planned move termination
 
 long							targetPosition = 0;						// inches to travel
 float							targetSpeed = 0.0;						// speed in steps/second
 unsigned long				travelStart = 0;							// start of curent carriage movement
+unsigned long				lastRunDuration = 0;						// duration of last movement
 int							stepsTaken = 0;							// counts steps actually executed
 bool							running = false;							// true iff moving the carriage
+
 
 extern void setupWiFi(void);
 extern void WiFiService(void);
 
 /*
- endstop ISR (used for both endstops)
+ endstop ISR (used for both endstops and end of planned moves)
  set flags & state to be used in loop()
  we clear the debounce flag after the debounce interval expires in loop()
 */
-void endstopHit ( void ) {
-	if ( !debounce ) {
+void endOfTravel ( void ) {
+	if ( plannedMoveEnd || !debounce ) {
 #if DEBUG > 0
 		Serial.println("**** ENDSTOP HIT ****");
 #endif
@@ -84,13 +87,11 @@ void endstopHit ( void ) {
 		case STOP_HERE:
 			// stop here
 			carriageState = CARRIAGE_STOP;
-			clockwise = !clockwise;								// next move user initiaites is opposite direction
 			break;
 			
 		case REVERSE:
 			// reverse direction
 			carriageState = CARRIAGE_TRAVEL_REVERSE;
-			clockwise = !clockwise;
 			newMove = true;										// execute the same move parameters in the opporsite direction
 			break;
 			
@@ -98,18 +99,20 @@ void endstopHit ( void ) {
 			// return once
 			carriageState = CARRIAGE_TRAVEL_REVERSE;
 			endstopAction = STOP_HERE;							// stop next time
-			clockwise = !clockwise;
 			newMove = true;
 			break;
 		
 		default:
 			break;
 		}
-		// set up debounce window (see loop())
-		debounce = true;
-		debounceStart = currentTime;
+		if ( !plannedMoveEnd ) {
+			// reverse direction IFF we hit the endstop switch
+			clockwise = !clockwise;		
+			// set up debounce window (see loop())
+			debounce = true;
+			debounceStart = currentTime;			
+		}
 	}
-
 }
 
 void setup ( void ) {
@@ -132,8 +135,8 @@ void setup ( void ) {
 	stepper.disableOutputs();									// don't energize the motors or enable controller until user initiates movement
 	
 	
-	attachInterrupt(digitalPinToInterrupt(LIMIT_MOTOR), endstopHit, FALLING);
-	attachInterrupt(digitalPinToInterrupt(LIMIT_END), endstopHit, FALLING);
+	attachInterrupt(digitalPinToInterrupt(LIMIT_MOTOR), endOfTravel, FALLING);
+	attachInterrupt(digitalPinToInterrupt(LIMIT_END), endOfTravel, FALLING);
 	
 	setupWiFi();
 }
@@ -201,9 +204,9 @@ void loop ( void ) {
 			if ( stepper.runSpeed() ) {
 				++stepsTaken;
 			}								
-		} else {
-			// target reached - stop the motor (and subsequently park it)
-			carriageState = CARRIAGE_STOP;
+		} else if ( stepsTaken == targetPosition ) {
+			// target reached without hitting the endstop, so simulate it to initiate next step (if any)
+			endOfTravel();
 		}
 		break;
 		
@@ -217,6 +220,10 @@ void loop ( void ) {
 		carriageState = PARKED;						// only place this is set other than initial condition
 		stepper.disableOutputs();
 		running = false;
+		if ( travelStart ) {
+			lastRunDuration = millis() - travelStart;
+			travelStart = 0;
+		}
 		break;
 		
 	case CARRIAGE_TRAVEL_REVERSE:

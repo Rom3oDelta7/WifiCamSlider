@@ -37,16 +37,18 @@ extern volatile CarriageMode	carriageState;			// current state of the carriage (
 extern long							targetPosition;		// inches to travel
 extern float						targetSpeed;			// speed in steps/second
 extern unsigned long				travelStart;			// start of curent carriage movement
+extern unsigned long				lastRunDuration;		// duration of last movement
 extern int							stepsTaken;				// counts steps actually executed
 extern bool							running;					// true iff moving the carriage
 
 
 // inline variable substitution
-#define DIRECTION_VAR			"%DIRECTION%"			// direction of travel (fwd/rev)
 #define MOTOR_VAR					"%MOTOR%"				// enabled/disabled
+#define ENDSTOP_VAR				"%ENDSTOP%"				// endstop state (toggle)
 #define DISTANCE_VAR				"%DISTANCE%"			// req distance to travel
 #define DURATION_VAR				"%DURATION%"			// req travel time
 #define SPEED_VAR					"%SPEED%"				// speed translated form user inputs
+#define DIRECTION_VAR			"%DIRECTION%"			// direction of travel (fwd/rev)
 #define START_VAR					"%START%"				// running/standby
 #define TRAVELED_VAR				"%TRAVELED%"			// distance traveled in last move
 #define ELAPSED_VAR				"%ELAPSED%"				// elapsed time of last move
@@ -63,26 +65,22 @@ extern bool							running;					// true iff moving the carriage
  also includes URI requests that invoke no action but will send the HTML file anyways (always need to reply to client)
 */
 #define ACTION_MOTOR				"MOTOR_BTN="				// motor button
-#define ACTION_END_STOP			"STOP"						// endstop state to stop (dropdown menu)
-#define ACTION_END_REVERSE		"REVERSE"					// endstop state to reverse
-#define ACTION_END_CYCLE		"CYCLE"						// endstop state to one cycle
+#define ACTION_ENDSTOP			"ENDSTOP_BTN="				// endstop state change button
 #define ACTION_DISTANCE			"DIST="						// input distance to travel
 #define ACTION_DURATION			"DURN="						// input travel duration
 #define ACTION_DIRECTION		"DIRECTION_BTN="			// toggle carriage direction
 #define ACTION_START				"START_BTN="				// initiate/stop movement
 #define ACTION_REFRESH			"REFRESH_BTN="				// refresh display
 
-typedef enum { NULL_ACTION, IGNORE, MOTOR_STATE, SET_STOP, SET_REVERSE, SET_CYCLE, SET_DISTANCE, SET_DURATION, SET_DIRECTION, START_STATE } T_Action;
+typedef enum { NULL_ACTION, IGNORE, MOTOR_STATE, ENDSTOP_STATE, SET_DISTANCE, SET_DURATION, SET_DIRECTION, START_STATE } T_Action;
 
-#define ACTION_TABLE_SIZE		12
+#define ACTION_TABLE_SIZE		10
 const struct {	
 	char 		action[20];
 	T_Action	type;
 } actionTable[ACTION_TABLE_SIZE] = {
 	{ACTION_MOTOR, 		MOTOR_STATE},
-	{ACTION_END_STOP, 	SET_STOP},
-	{ACTION_END_REVERSE,	SET_REVERSE},
-	{ACTION_END_CYCLE,	SET_CYCLE},
+	{ACTION_ENDSTOP, 		ENDSTOP_STATE},
 	{ACTION_DISTANCE,		SET_DISTANCE},
 	{ACTION_DURATION,		SET_DURATION},
 	{ACTION_DIRECTION,	SET_DIRECTION},
@@ -113,16 +111,19 @@ const struct {
  CSS color substitution variables and color defines
 */
 #define MOTOR_CSS					"%MOTOR_CSS%"
-#define DIRECTION_CSS			"%DIRECTION_CSS%"
+#define ENDSTOP_CSS				"%ENDSTOP_CSS%"
 #define DISTANCE_CSS				"%DISTANCE_CSS%"
 #define DURATION_CSS				"%DURATION_CSS%"
+#define DIRECTION_CSS			"%DIRECTION_CSS%"
 #define START_CSS					"%START_CSS%"
 
+// button background colors
 #define CSS_GREEN					"greenbkgd"
 #define CSS_RED					"redbkgd"
 #define CSS_ORANGE				"orangebkgd"
 #define CSS_GREY					"greybkgd"
 #define CSS_BLUE					"bluebkgd"
+#define CSS_PURPLE				"purplebkgd"
 
 
 WiFiServer	server(80);						// web server instance
@@ -230,7 +231,7 @@ void setupWiFi ( void ) {
 
 	// open the HTML file on the on-board FS and read it into a String (note that this string is never modified)
 	File serverFile = SPIFFS.open(BODY_FILE, "r");
-	bodyFile.reserve(STRING_MAX);				// ZZZ DBEUG ZZZ
+	bodyFile.reserve(STRING_MAX);
 	if ( serverFile ) {
 		if ( serverFile.available() ) {
 			bodyFile = serverFile.readString();
@@ -245,7 +246,7 @@ void setupWiFi ( void ) {
 	
 	// open the CSS file on the on-board FS and read it into a String (note that this string is never modified)
 	serverFile = SPIFFS.open(CSS_FILE, "r");
-	cssFile.reserve(STRING_MAX);				// ZZZ DBEUG ZZZ
+	cssFile.reserve(STRING_MAX);
 	if ( serverFile ) {
 		if ( serverFile.available() ) {
 			cssFile = serverFile.readString();
@@ -299,9 +300,9 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 	  Because the CSS colors for distance and duration must ALWAYS be substituted, we set the normal defaults first
 	  then change as necessary below - cleaner than the alternative of complex logic
 	*/
-	indexModified.reserve(STRING_MAX);													// ZZZ DBEUG ZZZ
-	indexModified.replace(String(DISTANCE_CSS), String("white"));
-	indexModified.replace(String(DURATION_CSS), String("white"));
+	indexModified.reserve(STRING_MAX);
+	String distanceTextColor = String("white");
+	String durationTextColor = String("white");
 	
 	//process user action
 	if ( actionType != IGNORE ) {
@@ -318,16 +319,24 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			inputPermitted = !inputPermitted;
 			break;
 			
-		case SET_STOP:
-			endstopAction = STOP_HERE;
-			break;
+		case ENDSTOP_STATE:
+			// toggle endstop state
+			switch ( endstopAction ) {
+			case STOP_HERE:
+				endstopAction = REVERSE;
+				break;
+				
+			case REVERSE:
+				endstopAction = ONE_CYCLE;
+				break;
+				
+			case ONE_CYCLE:
+				endstopAction = STOP_HERE;
+				break;
 			
-		case SET_REVERSE:
-			endstopAction = REVERSE;
-			break;
-
-		case SET_CYCLE:
-			endstopAction = ONE_CYCLE;
+			default:
+				break;
+			}
 			break;
 
 			
@@ -339,7 +348,9 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 				
 				travelDistance = constrain(value.toInt(), 1, MAX_TRAVEL_DISTANCE);
 				targetPosition = (long)INCHES_TO_STEPS(travelDistance);
+#if DEBUG >= 2
 				Serial.println(String("Target Position: ") + String(targetPosition) + String(" steps "));
+#endif
 			}
 			break;
 			
@@ -350,7 +361,9 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 				String value = url.substring(idx+1);
 				
 				travelDuration = constrain(value.toInt(), 1, MAX_TRAVEL_TIME);
+#if DEBUG >= 2
 				Serial.println(String("Travel Duration: ") + String(travelDuration) + String(" sec "));
+#endif
 			}
 			break;
 		
@@ -362,7 +375,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		case START_STATE:
 			/*
 			  stop or initiatiate movement
-			  indicate errors to user if we don't have what we need to initiate a move
+			  indicate errors to user if req data is missing
 			*/
 			if ( inputPermitted ) {
 				if ( running ) {
@@ -370,14 +383,16 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 				} else {
 					if ( targetPosition > 0 ) {
 						if ( travelDuration > 0 ) {
-							// all conditions satisfied - plan a new move
-							targetSpeed = constrain((float)(targetPosition / travelDuration), 1.0, HS24_MAX_SPEED);	// steps per second
+							// all conditions satisfied
 							newMove = true;																									// this flag triggers a new move
 						} else {
-							indexModified.replace(String(DURATION_CSS), String("red"));
+							durationTextColor = String("red");
 						}
 					} else {
-						indexModified.replace(String(DISTANCE_CSS), String("red"));
+						distanceTextColor = String("red");
+						if ( travelDuration <= 0 ) {
+							durationTextColor = String("red");
+						}
 					}
 				}
 			} else {
@@ -389,19 +404,52 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		default:
 			break;
 		}
-	
+		
+		// calculate speed
+		if ( (targetPosition > 0) && (travelDuration > 0) ) {
+			targetSpeed = constrain((float)(targetPosition / travelDuration), 1.0, HS24_MAX_SPEED);	// steps per second																								// this flag triggers a new move
+		}
+		
 		// substitute current data variables for the placeholders in the base HTML file
 		indexModified.replace(String(MOTOR_VAR), inputPermitted ? String("Enabled") : String("Disabled"));
-		indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Forward") : String("Reverse"));
+		switch ( endstopAction ) {
+		case STOP_HERE:
+			indexModified.replace(String(ENDSTOP_VAR), String("Stop"));
+			indexModified.replace(String(ENDSTOP_CSS), String(CSS_RED));
+			break;
+			
+		case REVERSE:
+			indexModified.replace(String(ENDSTOP_VAR), String("Reverse"));
+			indexModified.replace(String(ENDSTOP_CSS), String(CSS_PURPLE));
+			break;
+			
+		case ONE_CYCLE:
+			indexModified.replace(String(ENDSTOP_VAR), String("One Cycle"));
+			indexModified.replace(String(ENDSTOP_CSS), String(CSS_BLUE));
+			break;
+			
+		default:
+			break;
+		}
+
 		indexModified.replace(String(DISTANCE_VAR), String(travelDistance));
 		indexModified.replace(String(DURATION_VAR), String(travelDuration));
 		indexModified.replace(String(SPEED_VAR), String(targetSpeed));
-		indexModified.replace(String(START_VAR), running ? String("Running") : String("Standby"));
-		indexModified.replace(String(TRAVELED_VAR), String((float)STEPS_TO_INCHES(stepsTaken), 2));
-		indexModified.replace(String(ELAPSED_VAR), String((float)(((travelStart - millis())/1000), 2)));
-		
+		indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Forward") : String("Reverse"));
+		indexModified.replace(String(START_VAR), newMove ? String("Running") : String("Standby"));
+		// stepsTaken will either have the running running total or the total from the last run (or 0 if never run, of course)
+		indexModified.replace(String(TRAVELED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)), 2));
+		if ( running ) {
+			indexModified.replace(String(ELAPSED_VAR), String((float)((millis() - travelStart)/1000.0), 2));
+		} else if ( lastRunDuration ) {
+			indexModified.replace(String(ELAPSED_VAR), String((float)(lastRunDuration/1000.0), 2));
+		} else {
+			indexModified.replace(String(ELAPSED_VAR), String(" "));
+		}
 		
 		// change REMAINING color placeholders to corresponding CSS to match current state
+		indexModified.replace(String(DISTANCE_CSS), distanceTextColor);
+		indexModified.replace(String(DURATION_CSS), durationTextColor);
 		if ( clockwise ) {
 			indexModified.replace(String(DIRECTION_CSS), String(CSS_BLUE));
 		} else {
@@ -413,9 +461,9 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			indexModified.replace(String(MOTOR_CSS), String(CSS_RED));
 		}
 		if ( newMove ) {
-			indexModified.replace(String(START_CSS), String("green"));
+			indexModified.replace(String(START_CSS), String(CSS_GREEN));
 		} else {
-			indexModified.replace(String(START_CSS), String("red"));
+			indexModified.replace(String(START_CSS), String(CSS_RED));
 		}
 
 #if DEBUG >= 3
