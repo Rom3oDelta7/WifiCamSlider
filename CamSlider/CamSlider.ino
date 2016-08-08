@@ -206,6 +206,7 @@ void loop ( void ) {
 			}								
 		} else if ( stepsTaken == targetPosition ) {
 			// target reached without hitting the endstop, so simulate it to initiate next step (if any)
+			plannedMoveEnd = true;
 			endOfTravel();
 		}
 		break;
