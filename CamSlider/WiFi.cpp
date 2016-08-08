@@ -409,6 +409,8 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		// calculate speed
 		if ( (targetPosition > 0) && (travelDuration > 0) ) {
 			targetSpeed = constrain((float)(targetPosition / travelDuration), 1.0, HS24_MAX_SPEED);	// steps per second
+		} else {
+			targetSpeed = 0;
 		}
 		
 		// substitute current data variables for the placeholders in the base HTML file
@@ -435,11 +437,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 
 		indexModified.replace(String(DISTANCE_VAR), String(travelDistance));
 		indexModified.replace(String(DURATION_VAR), String(travelDuration));
-		if ( travelDuration > 0 ) {
-			indexModified.replace(String(SPEED_VAR), String((float)(travelDistance / travelDuration), 2));
-		} else {
-			indexModified.replace(String(SPEED_VAR), String(" "));
-		}
+		indexModified.replace(String(SPEED_VAR), String((float)(STEPS_TO_INCHES(targetSpeed)), 2));
 		indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Forward") : String("Reverse"));
 		indexModified.replace(String(START_VAR), newMove ? String("Running") : String("Standby"));
 		// stepsTaken will either have the running running total or the total from the last run (or 0 if never run, of course)

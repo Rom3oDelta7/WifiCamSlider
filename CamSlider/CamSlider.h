@@ -17,7 +17,7 @@
 #define PULLEY_TEETH			20
 #define BELT_PITCH			2						// 2 MM
 #define INCHES_PER_MM		25.4
-#define HS24_MAX_SPEED		592.0					// set using calculator at http://www.daycounter.com/Calculators/Stepper-Motor-Calculator.phtml
+#define HS24_MAX_SPEED		592.0					// in steps/sec set using calculator at http://www.daycounter.com/Calculators/Stepper-Motor-Calculator.phtml
 
 #define STEPS_PER_MM			(STEPS_PER_REV / (BELT_PITCH * PULLEY_TEETH))
 #define INCHES_TO_STEPS(I)	(STEPS_PER_MM * (I) * INCHES_PER_MM)

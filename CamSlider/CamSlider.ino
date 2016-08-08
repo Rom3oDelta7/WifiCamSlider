@@ -85,13 +85,16 @@ void endOfTravel ( void ) {
 #endif
 		switch ( endstopAction ) {
 		case STOP_HERE:
-			// stop here
 			carriageState = CARRIAGE_STOP;
+			if ( !plannedMoveEnd ) {
+				// reverse direction IFF we hit the endstop switch
+				clockwise = !clockwise;
+			}
 			break;
 			
 		case REVERSE:
-			// reverse direction
 			carriageState = CARRIAGE_TRAVEL_REVERSE;
+			clockwise = !clockwise;
 			newMove = true;										// execute the same move parameters in the opporsite direction
 			break;
 			
@@ -99,6 +102,7 @@ void endOfTravel ( void ) {
 			// return once
 			carriageState = CARRIAGE_TRAVEL_REVERSE;
 			endstopAction = STOP_HERE;							// stop next time
+			clockwise = !clockwise;
 			newMove = true;
 			break;
 		
@@ -106,8 +110,6 @@ void endOfTravel ( void ) {
 			break;
 		}
 		if ( !plannedMoveEnd ) {
-			// reverse direction IFF we hit the endstop switch
-			clockwise = !clockwise;		
 			// set up debounce window (see loop())
 			debounce = true;
 			debounceStart = currentTime;			
