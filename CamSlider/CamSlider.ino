@@ -111,6 +111,8 @@ void endOfTravel ( void ) {
 			// set up debounce window (see loop())
 			debounce = true;
 			debounceStart = currentTime;			
+		} else {
+			plannedMoveEnd = false;
 		}
 	}
 }
