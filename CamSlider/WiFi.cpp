@@ -58,7 +58,7 @@ extern bool							running;					// true iff moving the carriage
 // string objects for (static) filesystem contents
 #define BODY_FILE					"/body.html"				// html code <body>
 #define CSS_FILE					"/css.html"					// static CSS HTML contents to reduce burden on String objects
-#define STRING_MAX				3000
+#define STRING_MAX				3000							// max String obj length for holding HTML file content
 
 
 /*
@@ -230,7 +230,7 @@ void setupWiFi ( void ) {
 	}
 #endif	
 
-	// open the HTML file on the on-board FS and read it into a String (note that this string is never modified)
+	// open the BODY HTML file on the on-board FS and read it into a String (note that this string is never modified)
 	File serverFile = SPIFFS.open(BODY_FILE, "r");
 	bodyFile.reserve(STRING_MAX);
 	if ( serverFile ) {
@@ -239,7 +239,7 @@ void setupWiFi ( void ) {
 		}
 		serverFile.close();;
 	} else {
-#ifdef DEBUG
+#if DEBUG > 0
 		Serial.println("error opening BODY file");
 #endif
 		//errorLED(true);						// blinking ZZZZ add LED to schematic & setup()
@@ -254,7 +254,7 @@ void setupWiFi ( void ) {
 		}
 		serverFile.close();;
 	} else {
-#ifdef DEBUG
+#if DEBUG > 0
 		Serial.println("error opening CSS file");
 #endif
 		//errorLED(true);						// blinking ZZZZ add LED to schematic & setup()
@@ -475,7 +475,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		}
 
 #if DEBUG >= 3
-		Serial.println("\nINDEX FILE **MODIFIED**");
+		Serial.println("\BODY FILE **MODIFIED**");
 		Serial.print(indexModified);
 #endif
 		// finally, send to the client
