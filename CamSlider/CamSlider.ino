@@ -20,6 +20,7 @@
 #define DEBUG				2
 
 #include <AccelStepper.h>
+#include "LED3.h"
 #include "CamSlider.h"
 
 /*================================= stepper motor interface ==============================
@@ -38,6 +39,8 @@ Future driver support:
 	
 	
 */
+
+// ================================= stepper ==============================================
 
 #define MOTORA1				14						// ESP8266 pins
 #define MOTORA2				12
@@ -69,9 +72,44 @@ unsigned long				lastRunDuration = 0;						// duration of last movement
 int							stepsTaken = 0;							// counts steps actually executed
 bool							running = false;							// true iff moving the carriage
 
+/* ===================================== LED =================================================
 
+Status colors:
+---------------
+White		system initializing
+Blue		WiFi setup complete
+Cyan		motors stopped
+Red		user input disabled
+Green		carriage in motion
+
+*/
+
+#define LED_RED			1												// 1 & 3 MUST BE DISCONNECTED to use the Serial output (TX & RX)
+#define LED_GREEN			3
+#define LED_BLUE			2
+
+LED3			led(LED_RED, LED_GREEN, LED_BLUE, LED3_CATHODE);
+
+extern bool	inputPermitted;											// input enable flag
 extern void setupWiFi(void);
 extern void WiFiService(void);
+
+
+/*
+ light the LED to indicate status - THIS FUNCTION DOES NOT RETURN IF FATAL IS TRUE
+*/
+void statusLED ( const uint32_t color, const bool fatal = false ) {
+	if ( fatal ) {
+		while ( true ) {
+			led.setLED3Color(color);
+			delay(250);
+			led.setLED3Color(LED3_OFF);
+			delay(250);
+		}
+	} else {
+		led.setLED3Color(color);
+	}
+}
 
 /*
  endstop ISR (used for both endstops and end of planned moves)
@@ -124,7 +162,9 @@ void setup ( void ) {
 	Serial.begin(19200);
 	Serial.println("Initializing ...");
 #endif
+	
 	// housekeeping
+	statusLED(LED3_WHITE);
 	pinMode(MOTORA1, OUTPUT);
 	pinMode(MOTORA2, OUTPUT);
 	pinMode(MOTORB1, OUTPUT);
@@ -134,15 +174,15 @@ void setup ( void ) {
 	pinMode(LIMIT_END, INPUT_PULLUP);
 	
 	stepper.setMaxSpeed(HS24_MAX_SPEED);					// max steps/sec 
-	//stepper.setPinsInverted (false, false, true);		// inverted STBY pin on Allegro A4988
+	//stepper.setPinsInverted (false, false, true);		// inverted ENABLE pin on Allegro A4988
 	stepper.setEnablePin(STANDBY);							// set LOW to standby - internal pulldown in TB6612FNG
 	stepper.disableOutputs();									// don't energize the motors or enable controller until user initiates movement
-	
 	
 	attachInterrupt(digitalPinToInterrupt(LIMIT_MOTOR), endOfTravel, FALLING);
 	attachInterrupt(digitalPinToInterrupt(LIMIT_END), endOfTravel, FALLING);
 	
 	setupWiFi();
+	statusLED(LED3_BLUE);
 }
 
  
@@ -217,7 +257,6 @@ void loop ( void ) {
 		
 	case CARRIAGE_STOP:
 #if DEBUG >= 1
-			// display this in phone interface   ZZZ
 			Serial.println(String("*** Traveled ") + String(targetPosition) + String(" steps in ") + String((float)((millis() - travelStart)/1000.0)) + String(" sec"));
 #endif
 		stepper.stop();
@@ -238,6 +277,12 @@ void loop ( void ) {
 		break;
 		
 	case PARKED:
+		if ( inputPermitted ) {
+			statusLED(LED3_CYAN);					// indicates motors stopped
+		} else {
+			statusLED(LED3_RED);						// controls locked out
+		}
+		// FALLTHRU
 	default:
 			break;
 	}
@@ -258,6 +303,7 @@ void loop ( void ) {
 		travelStart = millis();
 		running = true;
 		stepsTaken = 0;
+		statusLED(LED3_GREEN);
 		newMove = false;
 	}
  }

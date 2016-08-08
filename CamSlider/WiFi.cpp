@@ -27,6 +27,7 @@ extern "C" {
 #include <WiFiClient.h> 
 #include <ESP8266WebServer.h>
 #include "FS.h"
+#include "LED3.h"
 #include "CamSlider.h"
 
 // main sketch externs
@@ -125,7 +126,7 @@ const struct {
 #define CSS_GREY					"greybkgd"
 #define CSS_BLUE					"bluebkgd"
 #define CSS_PURPLE				"purplebkgd"
-
+#define CSS_MAGENTA				"magentabkgd"
 
 WiFiServer	server(80);						// web server instance
 String		bodyFile;						// String copy of body file segment
@@ -139,9 +140,10 @@ bool			inputPermitted = true;		// controls input actions (action for motor enabl
 int			travelDuration = 0;			// holds travel duration in sec until we convert it to speed
 int			travelDistance = 0;			// holds travel distance in inches until we convert it to steps
 
+extern void statusLED(const uint32_t color, const bool blink = false);
 
 /*
-  initialization
+  WiFi AP & HTTP servr initialization
 */
 void setupWiFi ( void ) {
 	uint8_t	mac[WL_MAC_ADDR_LENGTH];
@@ -216,7 +218,7 @@ void setupWiFi ( void ) {
 #if DEBUG > 0
 		Serial.println("Cannot open SPIFFS file system.");
 #endif
-		//errorLED(false);  ZZZ 
+		statusLED(LED3_RED, true);
 	}
 	
 #if DEBUG >= 2
@@ -242,7 +244,7 @@ void setupWiFi ( void ) {
 #if DEBUG > 0
 		Serial.println("error opening BODY file");
 #endif
-		//errorLED(true);						// blinking ZZZZ add LED to schematic & setup()
+		statusLED(LED3_YELLOW, true);
 	}
 	
 	// open the CSS file on the on-board FS and read it into a String (note that this string is never modified)
@@ -257,7 +259,7 @@ void setupWiFi ( void ) {
 #if DEBUG > 0
 		Serial.println("error opening CSS file");
 #endif
-		//errorLED(true);						// blinking ZZZZ add LED to schematic & setup()
+		statusLED(LED3_ORANGE, true);
 	}
 }
 
@@ -396,8 +398,6 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 						}
 					}
 				}
-			} else {
-				// error indication needed here ?? ZZZ
 			}
 			break;
 			
