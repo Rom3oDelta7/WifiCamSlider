@@ -12,7 +12,7 @@
 #ifndef CAMSLIDER_H
 #define CAMSLIDER_H
 
-// OSM 17HS24-0644S stepper motor parameters needed for motoin calculations
+// OSM 17HS24-0644S stepper motor parameters needed for motion calculations
 #define STEPS_PER_REV		200
 #define PULLEY_TEETH			20
 #define BELT_PITCH			2						// 2 MM

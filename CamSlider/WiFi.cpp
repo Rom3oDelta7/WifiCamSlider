@@ -140,7 +140,7 @@ bool			inputPermitted = true;		// controls input actions (action for motor enabl
 int			travelDuration = 0;			// holds travel duration in sec until we convert it to speed
 int			travelDistance = 0;			// holds travel distance in inches until we convert it to steps
 
-extern void statusLED(const uint32_t color, const bool blink = false);
+extern void statusLED(const uint32_t color, const bool fatal = false);
 
 /*
   WiFi AP & HTTP servr initialization
