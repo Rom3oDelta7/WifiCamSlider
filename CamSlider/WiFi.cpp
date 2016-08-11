@@ -438,7 +438,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		indexModified.replace(String(DISTANCE_VAR), String(travelDistance));
 		indexModified.replace(String(DURATION_VAR), String(travelDuration));
 		indexModified.replace(String(SPEED_VAR), String((float)(STEPS_TO_INCHES(targetSpeed)), 2));
-		indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Forward") : String("Reverse"));
+		indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Towards") : String("Away"));
 		indexModified.replace(String(START_VAR), newMove ? String("Running") : String("Standby"));
 		// stepsTaken will either have the running running total or the total from the last run (or 0 if never run, of course)
 		indexModified.replace(String(TRAVELED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)), 2));
