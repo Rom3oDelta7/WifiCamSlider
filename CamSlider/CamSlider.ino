@@ -18,6 +18,8 @@
 */
 
 #define DEBUG				2
+#define TB6612FNG							// TB6612FNG H-bridge controller module
+//#define A4988							// Stepstick A4988 controller module
 
 #include <AccelStepper.h>
 #include "LED3.h"
@@ -42,17 +44,32 @@ Future driver support:
 
 // ================================= stepper ==============================================
 
-#define MOTORA1				14						// ESP8266 pins
-#define MOTORA2				12
-#define MOTORB1				4
-#define MOTORB2				5	
-#define STANDBY				16
+#ifdef TB6612FNG
+#define MOTORA1				14						// WeMos D5
+#define MOTORA2				12						// WeMos D6
+#define MOTORB1				4						// WeMos D2
+#define MOTORB2				5						// WeMos D1
+#define STANDBY				16						// WeMos D0
+#elif defined(A4988)
+#define STEP					14						// WeMos D5
+#define DIR						16						// WeMos D0; HIGH == FWD
+#define ENABLE					12						// WeMos D6
+#endif
 
+#ifdef TB6612FNG
 AccelStepper stepper(AccelStepper::FULL4WIRE, MOTORA1, MOTORA2, MOTORB1, MOTORB2);
+#elif defined(A4988)
+AccelStepper stepper(AccelStepper::DRIVER, STEP, DIR);
+#endif
 
 // ================================ slider controls =======================================
-#define LIMIT_MOTOR		0				// motor-side endstop switch pin - pullup resistor in this pin
-#define LIMIT_END			13				// other endstop switch pin - use internal pullup
+#ifdef TB6612FNG
+#define LIMIT_MOTOR		0				// motor-side endstop switch pin - WeMos pullup resistor on this pin (D3)
+#define LIMIT_END			13				// other endstop switch pin (D7)
+#elif defined(A4988)
+#define LIMIT_MOTOR		0				// motor-side endstop switch pin - WeMos pullup (D3)
+#define LIMIT_END			2				// other endstop switch pin - WeMos pullup (D4)
+#endif
 
 #define BOUNCE_DELAY		300			// delay window in msec to ignore pin value fluctuation
 
@@ -84,9 +101,16 @@ Green		carriage in motion
 
 */
 
-#define LED_RED			1												// 1 & 3 MUST BE DISCONNECTED to use the Serial output (TX & RX)
-#define LED_GREEN			3
-#define LED_BLUE			2
+// pins
+#ifdef TB6612FNG
+#define LED_RED			1												// WeMos TX - 1 & 3 MUST BE DISCONNECTED to use the Serial output (TX & RX)
+#define LED_GREEN			3												// WeMos Rx
+#define LED_BLUE			2												// WeMos D4
+#elif defined(A4988)
+#define LED_RED			13												// WeMos D7
+#define LED_GREEN			5												// WeMos D1
+#define LED_BLUE			4												// WeMos D2
+#endif
 
 LED3			led(LED_RED, LED_GREEN, LED_BLUE, LED3_CATHODE);
 
@@ -114,7 +138,7 @@ void statusLED ( const uint32_t color, const bool fatal = false ) {
 /*
  endstop ISR (used for both endstops and end of planned moves)
  set flags & state to be used in loop()
- we clear the debounce flag after the debounce interval expires in loop()
+ we clear the debounce flag after the debounce interval expires in loop() if this is called by an interrupt
 */
 void endOfTravel ( void ) {
 	if ( plannedMoveEnd || !debounce ) {
@@ -157,6 +181,9 @@ void endOfTravel ( void ) {
 	}
 }
 
+/*
+ SETUP
+*/
 void setup ( void ) {
 #if DEBUG > 0
 	Serial.begin(19200);
@@ -165,17 +192,35 @@ void setup ( void ) {
 	
 	// housekeeping
 	statusLED(LED3_WHITE);
+#ifdef TB6612FNG
+#if DEBUG > 0
+	Serial.println(">> TB6612FNG controller defined <<");
+#endif
 	pinMode(MOTORA1, OUTPUT);
 	pinMode(MOTORA2, OUTPUT);
 	pinMode(MOTORB1, OUTPUT);
 	pinMode(MOTORB2, OUTPUT);
 	pinMode(STANDBY, OUTPUT);
-	pinMode(LIMIT_MOTOR, INPUT);								// WeMos internal pullup resistor
+	pinMode(LIMIT_MOTOR, INPUT);								// WeMos pullup resistor
 	pinMode(LIMIT_END, INPUT_PULLUP);
 	
-	stepper.setMaxSpeed(HS24_MAX_SPEED);					// max steps/sec 
-	//stepper.setPinsInverted (false, false, true);		// inverted ENABLE pin on Allegro A4988
 	stepper.setEnablePin(STANDBY);							// set LOW to standby - internal pulldown in TB6612FNG
+
+#elif defined(A4988)
+#if DEBUG > 0
+	Serial.println(">> A4988 controller defined <<");
+#endif
+	pinMode(STEP, OUTPUT);
+	pinMode(DIR, OUTPUT);
+	pinMode(ENABLE, OUTPUT);
+	pinMode(LIMIT_MOTOR, INPUT);								// WeMos module pullup resistor on both pins
+	pinMode(LIMIT_END, INPUT);
+	
+	stepper.setEnablePin(ENABLE);								// set LOW to standby - internal pulldown in TB6612FNG
+	stepper.setPinsInverted(false, false, true);			// inverted ENABLE pin on Allegro A4988
+#endif
+	
+	stepper.setMaxSpeed(HS24_MAX_SPEED);					// max steps/sec 
 	stepper.disableOutputs();									// don't energize the motors or enable controller until user initiates movement
 	
 	attachInterrupt(digitalPinToInterrupt(LIMIT_MOTOR), endOfTravel, FALLING);
@@ -185,7 +230,10 @@ void setup ( void ) {
 	statusLED(LED3_BLUE);
 }
 
- 
+
+/*
+ LOOP
+*/
 void loop ( void ) {
 	
 	yield();
