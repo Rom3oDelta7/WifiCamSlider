@@ -12,7 +12,7 @@
    
 */
 
-#define DEBUG			2
+#define DEBUG			0
 
 extern "C" {
 	/*
@@ -105,8 +105,8 @@ const struct {
 	uint8_t 	mac[2];						// last 2 bytes of MAC address
 	uint8_t	subnet;						// unique subnet to use for gateway address and DHCP assignment
 } ESP_Identifier[ID_TABLE_SIZE] = {
-	{"CSPROTO", "camslider", {0xF3, 0xD6}, 30},
-	{"CS001",   "camslider", {0xF3, 0x83}, 31}
+	{"CAMSLIDER", "camslider", {0xF3, 0xD6}, 30},
+	{"CSPROTO2", "camslider", {0x7E, 0xE3}, 31}
 };
 
 /*

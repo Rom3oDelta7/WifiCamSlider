@@ -3,7 +3,7 @@
 
 	WiFi Camera Slider Controller
 	Controls the stepper motor on the slider as well as providing an HTTP server and AP to enable WiFi control from any browser without a WiFI network host.
-	This version uses the TB6612FNG controller and a WeMos D1 Mini ESP8266 (ESP-12F) devboard.
+	This version supports either a TB6612FNG (H Bridge) or an A4988 (chopper) controller using a WeMos D1 Mini ESP8266 (ESP-12F) devboard.
 	
 	References:
 		Stepper library: http://www.airspayce.com/mikem/arduino/AccelStepper/classAccelStepper.html
@@ -17,9 +17,9 @@
    
 */
 
-#define DEBUG				2
-#define TB6612FNG							// TB6612FNG H-bridge controller module
-//#define A4988							// Stepstick A4988 controller module
+#define DEBUG				0
+//#define TB6612FNG							// TB6612FNG H-bridge controller module
+#define A4988							// Stepstick A4988 controller module
 
 #include <AccelStepper.h>
 #include "LED3.h"
@@ -33,37 +33,37 @@ This code was written for an OSM 17HS24-0644S stepper motor
 	http://www.omc-stepperonline.com/download/pdf/17HS24-0644S.pdf (datasheet [partially in Chinese])
 	http://www.osmtec.com/stepper_motors.htm (OSM stepper motor catalog)
 	
-Current controller: TB6612FNG
+TB6612FNG H Bridge controller:
 	https://www.sparkfun.com/products/9457
 	
-Future driver support:
-	http://www.electrodragon.com/product/stepstick-stepper-driver-board-a4988-v2/ (Allegro A4988 chopper driver (microstepping))
+Allegro A4988 motor controller
+	http://www.electrodragon.com/w/Stepstick_Stepper_Driver_Board_A4988_V2
 	
 	
 */
 
 // ================================= stepper ==============================================
 
-#ifdef TB6612FNG
+#if defined(TB6612FNG)
 #define MOTORA1				14						// WeMos D5
 #define MOTORA2				12						// WeMos D6
 #define MOTORB1				4						// WeMos D2
 #define MOTORB2				5						// WeMos D1
 #define STANDBY				16						// WeMos D0
 #elif defined(A4988)
-#define STEP					14						// WeMos D5
-#define DIR						16						// WeMos D0; HIGH == FWD
+#define STEP					16						// WeMos D5
+#define DIR						14						// WeMos D0; HIGH == FWD
 #define ENABLE					12						// WeMos D6
 #endif
 
-#ifdef TB6612FNG
+#if defined(TB6612FNG)
 AccelStepper stepper(AccelStepper::FULL4WIRE, MOTORA1, MOTORA2, MOTORB1, MOTORB2);
 #elif defined(A4988)
 AccelStepper stepper(AccelStepper::DRIVER, STEP, DIR);
 #endif
 
 // ================================ slider controls =======================================
-#ifdef TB6612FNG
+#if defined(TB6612FNG)
 #define LIMIT_MOTOR		0				// motor-side endstop switch pin - WeMos pullup resistor on this pin (D3)
 #define LIMIT_END			13				// other endstop switch pin (D7)
 #elif defined(A4988)
@@ -75,9 +75,9 @@ AccelStepper stepper(AccelStepper::DRIVER, STEP, DIR);
 
 volatile	bool				newMove = false;							// true when we need to initiate a new move
 volatile bool				clockwise = true;
-volatile EndstopMode		endstopAction = REVERSE;				// action to take when an endstop is hit
+volatile EndstopMode		endstopAction = STOP_HERE;				// action to take when an endstop is hit
 volatile CarriageMode	carriageState = PARKED;					// current state of the carriage (for the motion state machine)
-volatile bool				debounce = false;							// ISR debounce control flag
+volatile bool				debounce = true;							// ISR debounce control flag (init true to avoid triggering on noise at startup)
 volatile unsigned long 	currentTime = 0;							// set in loop() so we don't have to call it in the ISR
 volatile unsigned long	debounceStart = 0;						// start of debounce window
 volatile bool				plannedMoveEnd = false;					// true if calling endOfTravel for a planned move termination
@@ -91,18 +91,24 @@ bool							running = false;							// true iff moving the carriage
 
 /* ===================================== LED =================================================
 
-Status colors:
----------------
+Status colors (solid):
+----------------------
 White		system initializing
 Blue		WiFi setup complete
 Cyan		motors stopped
 Red		user input disabled
 Green		carriage in motion
 
+Error state colors (flashing):
+------------------------------
+Red		error opening SPIFFS file system
+Yellow	error opening BODY HTML file
+Orange	error opening CSS HTML file
+
 */
 
 // pins
-#ifdef TB6612FNG
+#if defined(TB6612FNG)
 #define LED_RED			1												// WeMos TX - 1 & 3 MUST BE DISCONNECTED to use the Serial output (TX & RX)
 #define LED_GREEN			3												// WeMos Rx
 #define LED_BLUE			2												// WeMos D4
@@ -136,7 +142,7 @@ void statusLED ( const uint32_t color, const bool fatal = false ) {
 }
 
 /*
- endstop ISR (used for both endstops and end of planned moves)
+ endstop ISR (used for both endstops and end of planned moves (e.g. shorter distances that do not hit the limit switch))
  set flags & state to be used in loop()
  we clear the debounce flag after the debounce interval expires in loop() if this is called by an interrupt
 */
@@ -149,7 +155,7 @@ void endOfTravel ( void ) {
 		case STOP_HERE:
 			carriageState = CARRIAGE_STOP;
 			if ( !plannedMoveEnd ) {
-				// reverse direction IFF we hit the endstop switch
+				// reverse direction IFF we hit the endstop limit switch
 				clockwise = !clockwise;
 			}
 			break;
@@ -192,9 +198,9 @@ void setup ( void ) {
 	
 	// housekeeping
 	statusLED(LED3_WHITE);
-#ifdef TB6612FNG
+#if defined(TB6612FNG)
 #if DEBUG > 0
-	Serial.println(">> TB6612FNG controller defined <<");
+	Serial.println(">> TB6612FNG controller configured <<");
 #endif
 	pinMode(MOTORA1, OUTPUT);
 	pinMode(MOTORA2, OUTPUT);
@@ -208,7 +214,7 @@ void setup ( void ) {
 
 #elif defined(A4988)
 #if DEBUG > 0
-	Serial.println(">> A4988 controller defined <<");
+	Serial.println(">> A4988 controller configured <<");
 #endif
 	pinMode(STEP, OUTPUT);
 	pinMode(DIR, OUTPUT);
