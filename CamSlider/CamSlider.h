@@ -26,5 +26,15 @@
 
 typedef enum { STOP_HERE, REVERSE, ONE_CYCLE } EndstopMode;
 typedef enum { CARRIAGE_STOP, CARRIAGE_TRAVEL, CARRIAGE_TRAVEL_REVERSE, PARKED } CarriageMode;
+typedef enum { MOVE_DISABLED, MOVE_VIDEO, MOVE_TIMELAPSE } MoveMode;
+
+// timelapse move inputs & parameters
+typedef struct {
+	int	moveDistance;						// distance to move in each interval
+	int	moveInterval;						// delay in sec between moves
+	int	moveTarget;							// total number of moves to take
+	int	moveCount;							// realtime move count
+	int	timerID;								// ID of the current timer
+} T_TL_Data;
 
 #endif

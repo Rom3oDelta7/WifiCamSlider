@@ -23,6 +23,7 @@
 
 #include <AccelStepper.h>
 #include "LED3.h"
+#include "SimpleTimer.h"
 #include "CamSlider.h"
 
 /*================================= stepper motor interface ==============================
@@ -104,6 +105,7 @@ Error state colors (flashing):
 Red		error opening SPIFFS file system
 Yellow	error opening BODY HTML file
 Orange	error opening CSS HTML file
+Blue     timelapse move error
 
 */
 
@@ -119,8 +121,11 @@ Orange	error opening CSS HTML file
 #endif
 
 LED3			led(LED_RED, LED_GREEN, LED_BLUE, LED3_CATHODE);
+SimpleTimer timer;														// for timelapse mode
 
-extern bool	inputPermitted;											// input enable flag
+extern MoveMode	sliderMode;											// input enable flag
+extern T_TL_Data 	timelapse;											// data for timelapse moves
+
 extern void setupWiFi(void);
 extern void WiFiService(void);
 
@@ -236,6 +241,33 @@ void setup ( void ) {
 	statusLED(LED3_BLUE);
 }
 
+/*
+ timer routine for implementing a set of moves for timelapse photography
+ this is called each time the interval is reached, whereupon we should trigger the shutter and initiate a new move
+ not a real interrupt, so no need for volatile variables
+ move parameters have already been verified
+ 
+ sequence is shutter -> initiate move -> delay interval
+*/
+void timelapseMove ( void ) {
+	
+	if ( timelapse.moveTarget > 0 ) {
+		// SHUTTER ZZZ
+		// initiate a new move
+		if ( running ) {
+			statusLED(LED3_BLUE, true);
+		}
+		timelapse.moveTarget--;
+		timelapse.moveCount++;
+		
+		targetPosition = (long)INCHES_TO_STEPS(timelapse.moveDistance);
+		targetSpeed = HS24_MAX_SPEED;
+		newMove = true;
+		if ( timelapse.moveTarget > 0 ) {
+			timelapse.timerID = timer.setTimeout(timelapse.moveInterval * 1000, timelapseMove);
+		}
+	}
+}
 
 /*
  LOOP
@@ -322,6 +354,12 @@ void loop ( void ) {
 			lastRunDuration = millis() - travelStart;
 			travelStart = 0;
 		}
+		if ( timer.isEnabled(timelapse.timerID) ) {
+			// if in-progress timelapse move, terminate the move series
+			timer.disable(timelapse.timerID);
+			timer.deleteTimer(timelapse.timerID);
+			timelapse.moveTarget = 0;
+		}
 		break;
 		
 	case CARRIAGE_TRAVEL_REVERSE:
@@ -331,7 +369,7 @@ void loop ( void ) {
 		break;
 		
 	case PARKED:
-		if ( inputPermitted ) {
+		if ( sliderMode != MOVE_DISABLED ) {
 			statusLED(LED3_CYAN);					// indicates motors stopped
 		} else {
 			statusLED(LED3_RED);						// controls locked out
@@ -360,4 +398,5 @@ void loop ( void ) {
 		statusLED(LED3_GREEN);
 		newMove = false;
 	}
+	timer.run();
  }
