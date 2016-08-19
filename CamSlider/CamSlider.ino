@@ -266,6 +266,8 @@ void triggerShutter ( void ) {
 /*
  timer routine for implementing a set of moves for timelapse photography
  this is called each time the interval is reached, whereupon we should trigger the shutter and initiate a new move
+ note that the move (travel) time is included in the delay interval
+ 
  not a real interrupt, so no need for volatile variables
  move parameters have already been verified
  
@@ -358,7 +360,7 @@ void loop ( void ) {
 			}								
 		} else if ( stepsTaken == targetPosition ) {
 			// target reached without hitting the endstop, so simulate it to initiate next step (if any)
-			plannedMoveEnd = true;
+			plannedMoveEnd = true;					// set when we did NOT hit the limit switch
 			endOfTravel();
 		}
 		break;
