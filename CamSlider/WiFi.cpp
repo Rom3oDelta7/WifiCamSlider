@@ -158,13 +158,13 @@ struct {
 } video = {0, 0};
 
 // data for timelapse mode
-T_TL_Data timelapse = {0, 0, 0, 0, 0};
+TL_Data timelapse = {0, 0, 0, 0, 0};
 
 extern void statusLED(const uint32_t color, const bool fatal = false);
 extern void timelapseMove(void);
 
 /*
-  WiFi AP & HTTP servr initialization
+  WiFi AP & HTTP server initialization
 */
 void setupWiFi ( void ) {
 	uint8_t	mac[WL_MAC_ADDR_LENGTH];
@@ -517,9 +517,9 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			if ( idx ) {
 				String value = url.substring(idx+1);
 				
-				timelapse.moveInterval = constrain(value.toInt(), 1, (MAX_TRAVEL_TIME*1000));
+				timelapse.moveInterval = constrain(value.toInt(), 1, MAX_TRAVEL_TIME);
 #if DEBUG >= 2
-				Serial.println(String("Move interval: ") + String(timelapse.moveInterval) + String(" msec "));
+				Serial.println(String("Move interval: ") + String(timelapse.moveInterval) + String(" sec "));
 #endif
 			}
 			break;

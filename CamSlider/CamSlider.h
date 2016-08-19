@@ -35,6 +35,6 @@ typedef struct {
 	int	moveTarget;							// total number of moves to take
 	int	moveCount;							// realtime move count
 	int	timerID;								// ID of the current timer
-} T_TL_Data;
+} TL_Data;
 
 #endif

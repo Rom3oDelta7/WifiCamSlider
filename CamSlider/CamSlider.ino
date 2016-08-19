@@ -95,8 +95,8 @@ bool							running = false;							// true iff moving the carriage
 Status colors (solid):
 ----------------------
 White		system initializing
-Blue		WiFi setup complete
-Cyan		motors stopped
+Blue		camera triggering
+Purple	motors stopped
 Red		user input disabled
 Green		carriage in motion
 
@@ -118,13 +118,17 @@ Blue     timelapse move error
 #define LED_RED			13												// WeMos D7
 #define LED_GREEN			5												// WeMos D1
 #define LED_BLUE			4												// WeMos D2
+#define CAM_TRIGGER		15												// WeMos D8 (pulldown)
 #endif
+
+#define SHUTTER_LED_DURATION	400									// duration of shutter LED indicator (+100msec)
 
 LED3			led(LED_RED, LED_GREEN, LED_BLUE, LED3_CATHODE);
 SimpleTimer timer;														// for timelapse mode
 
-extern MoveMode	sliderMode;											// input enable flag
-extern T_TL_Data 	timelapse;											// data for timelapse moves
+extern 	MoveMode	sliderMode;											// input enable flag
+extern 	TL_Data 	timelapse;											// data for timelapse moves
+uint32_t savedLED3Color;												// saved color value for camera shutter trigger
 
 extern void setupWiFi(void);
 extern void WiFiService(void);
@@ -226,6 +230,7 @@ void setup ( void ) {
 	pinMode(ENABLE, OUTPUT);
 	pinMode(LIMIT_MOTOR, INPUT);								// WeMos module pullup resistor on both pins
 	pinMode(LIMIT_END, INPUT);
+	pinMode(CAM_TRIGGER, OUTPUT);								// WeMos pulldown on this pin
 	
 	stepper.setEnablePin(ENABLE);								// set LOW to standby - internal pulldown in TB6612FNG
 	stepper.setPinsInverted(false, false, true);			// inverted ENABLE pin on Allegro A4988
@@ -238,7 +243,24 @@ void setup ( void ) {
 	attachInterrupt(digitalPinToInterrupt(LIMIT_END), endOfTravel, FALLING);
 	
 	setupWiFi();
-	statusLED(LED3_BLUE);
+}
+
+/*
+ turn off the LED that indicates the shutter was triggered
+ we use this timer routine to avoid calling delay in tiggerShutter()
+*/
+void shutterLEDReset ( void ) {
+	led.setLED3Color(savedLED3Color);
+}
+
+// fire the camera shutter
+void triggerShutter ( void ) {
+	savedLED3Color = led.getLED3Color();
+	led.setLED3Color(LED3_BLUE);
+	digitalWrite(CAM_TRIGGER, HIGH);
+	delay(100);
+	digitalWrite(CAM_TRIGGER, LOW);
+	timer.setTimeout(SHUTTER_LED_DURATION, shutterLEDReset);
 }
 
 /*
@@ -251,20 +273,20 @@ void setup ( void ) {
 */
 void timelapseMove ( void ) {
 	
-	if ( timelapse.moveTarget > 0 ) {
-		// SHUTTER ZZZ
+	if ( (timelapse.moveTarget - timelapse.moveCount) > 0 ) {
+		triggerShutter();
 		// initiate a new move
 		if ( running ) {
-			statusLED(LED3_BLUE, true);
+			statusLED(LED3_BLUE, true);						// should never happen
 		}
-		timelapse.moveTarget--;
 		timelapse.moveCount++;
-		
 		targetPosition = (long)INCHES_TO_STEPS(timelapse.moveDistance);
 		targetSpeed = HS24_MAX_SPEED;
 		newMove = true;
-		if ( timelapse.moveTarget > 0 ) {
+		if ( (timelapse.moveTarget - timelapse.moveCount) > 0 ) {
 			timelapse.timerID = timer.setTimeout(timelapse.moveInterval * 1000, timelapseMove);
+		} else {
+			timelapse.timerID = -1;
 		}
 	}
 }
@@ -354,11 +376,12 @@ void loop ( void ) {
 			lastRunDuration = millis() - travelStart;
 			travelStart = 0;
 		}
-		if ( timer.isEnabled(timelapse.timerID) ) {
-			// if in-progress timelapse move, terminate the move series
+		if ( (timelapse.timerID >= 0) && timer.isEnabled(timelapse.timerID) ) {
+			// if in-progress timelapse move(s), terminate the move series
 			timer.disable(timelapse.timerID);
 			timer.deleteTimer(timelapse.timerID);
 			timelapse.moveTarget = 0;
+			timelapse.timerID = -1;
 		}
 		break;
 		
@@ -370,7 +393,7 @@ void loop ( void ) {
 		
 	case PARKED:
 		if ( sliderMode != MOVE_DISABLED ) {
-			statusLED(LED3_CYAN);					// indicates motors stopped
+			statusLED(LED3_PURPLE);					// indicates motors stopped
 		} else {
 			statusLED(LED3_RED);						// controls locked out
 		}
