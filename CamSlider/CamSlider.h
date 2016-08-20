@@ -35,7 +35,7 @@ typedef struct {
 	int	totalImages;						// total number of images to take (user input)
 	int	moveDistance;						// distance to move in each interval
 	int	moveInterval;						// delay in sec between moves
-	int	moveCount;							// realtime move count
+	int	imageCount;							// realtime shutter activation count
 	bool	waitToMove;							// waiting to initiate the move
 	bool  waitForStop;						// waiting for the current move to end
 } TL_Data;

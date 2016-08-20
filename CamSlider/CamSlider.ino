@@ -274,18 +274,19 @@ void triggerShutter ( void ) {
 */
 void timelapseMove ( void ) {
 	
-	if ( (timelapse.totalImages - timelapse.moveCount) > 0 ) {
+	if ( (timelapse.totalImages - timelapse.imageCount) > 0 ) {
 		if ( !timelapse.waitToMove ) {
-			float moveTime = INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED;				// inches per step / steps per second = seconds
-
 			delay(200);									// settling time after carriage move
 			triggerShutter();
-			timelapse.waitToMove = true;
-			timer.setTimeout(((timelapse.moveInterval - (int)ceil(moveTime)) * 1000), timelapseMove);
+			if ( ++timelapse.imageCount < timelapse.totalImages ) {
+				timelapse.waitToMove = true;
+				float moveTime = INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED;				// inches per step / steps per second = seconds
+				timer.setTimeout(((timelapse.moveInterval - (int)ceil(moveTime)) * 1000), timelapseMove);
 #if DEBUG >= 2
-			Serial.println(String("Move time is: ") + String(moveTime));
-			Serial.println(String("NET move time: ") + String((timelapse.moveInterval - (int)ceil(moveTime)) * 1000));
+				Serial.println(String("Move time is: ") + String(moveTime));
+				Serial.println(String("NET move time: ") + String((timelapse.moveInterval - (int)ceil(moveTime)) * 1000));
 #endif
+			}
 		} else {
 			/*
 			 delay has expired, so set up the move
@@ -391,7 +392,6 @@ void loop ( void ) {
 		if ( timelapse.waitForStop ) {
 			// end of a move within a timelapse sequence
 			timelapse.waitForStop = false;
-			timelapse.moveCount++;
 			timelapseMove();
 		}
 		break;
