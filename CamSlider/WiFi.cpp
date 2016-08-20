@@ -12,7 +12,7 @@
    
 */
 
-#define DEBUG			2
+#define DEBUG			0
 
 extern "C" {
 	/*
@@ -346,7 +346,12 @@ void sendHTML ( const int code, const char *content_type, const String &body ) {
 /*
  depending on what the requested action is, make the appropriate changes to the HTML code stream
  (e.g. variable substation) and state changes to the main sketch code and send the modified HTML
- stream to the client
+ stream to the client. This is done simply by copying the string with the base HTML code and making modifications 
+ to the copy only.
+ 
+ Color coding:
+  * buttons change color when changing state (e.g. run -> standby)
+  * text labels will indicated errors in red, "cautions" in yellow (e.g. if parameters were reset to meet min/max limits)
 */
 void sendResponse ( const T_Action actionType, const String &url ) {
 	String 	indexModified;								// all changes made to this String
@@ -371,12 +376,14 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 #endif
 	if ( sliderMode == MOVE_VIDEO ) {
 		indexModified = videoBodyFile;
+		indexModified.reserve(STRING_MAX);
 	} else if ( sliderMode == MOVE_TIMELAPSE ) {
 		indexModified = timelapseBodyFile;
+		indexModified.reserve(STRING_MAX);
 	} else {
 		indexModified = disabledBodyFile;
+		indexModified.reserve(STRING_MAX_SHORT);
 	}
-	indexModified.reserve(STRING_MAX);
 	
 	String distanceTextColor = String("white");
 	String durationTextColor = String("white");

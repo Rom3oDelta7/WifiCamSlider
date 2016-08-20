@@ -17,7 +17,7 @@
    
 */
 
-#define DEBUG				2
+#define DEBUG				0
 //#define TB6612FNG							// TB6612FNG H-bridge controller module
 #define A4988							// Stepstick A4988 controller module
 
@@ -98,9 +98,9 @@ Status colors (solid):
 ----------------------
 White		system initializing
 Blue		camera triggering
-Purple	motors stopped
-Red		user input disabled
-Green		carriage in motion
+Purple	Timelapse mode: motors stopped
+Cyan		Video mode: motors stopped
+Red		Disabled mode
 
 Error state colors (flashing):
 ------------------------------
@@ -109,7 +109,6 @@ Yellow	error opening Video BODY HTML file
 Purple	error opening Timelapse BODY file
 Cyan		error opening Disabled BODY file
 Orange	error opening CSS HTML file
-Blue     timelapse move error
 
 */
 
@@ -125,7 +124,8 @@ Blue     timelapse move error
 #define CAM_TRIGGER		15												// WeMos D8 (pulldown)
 #endif
 
-#define SHUTTER_LED_DURATION	400									// duration of shutter LED indicator (+100msec)
+#define SHUTTER_DELAY	250											// msec to wait after a move for the platform to stabilize
+
 
 LED3			led(LED_RED, LED_GREEN, LED_BLUE, LED3_CATHODE);
 SimpleTimer timer;														// for timelapse mode
@@ -173,13 +173,14 @@ void endOfTravel ( void ) {
 			break;
 			
 		case REVERSE:
+			// reverse without stopping
 			carriageState = CARRIAGE_TRAVEL_REVERSE;
 			clockwise = !clockwise;
 			newMove = true;										// execute the same move parameters in the opporsite direction
 			break;
 			
 		case ONE_CYCLE:
-			// return once
+			// return once, no stopping
 			carriageState = CARRIAGE_TRAVEL_REVERSE;
 			endstopAction = STOP_HERE;							// stop next time
 			clockwise = !clockwise;
@@ -258,7 +259,7 @@ void triggerShutter ( void ) {
 }
 
 /*
- timer routine for implementing a set of moves for timelapse photography
+ small FSM for implementing a set of moves for timelapse photography
  sequence is:
     trigger the shutter
 	 wait for selected delay time, moving at the end of the window
@@ -277,12 +278,13 @@ void timelapseMove ( void ) {
 	if ( timelapse.enabled && ((timelapse.totalImages - timelapse.imageCount) > 0) ) {
 		if ( !timelapse.waitToMove ) {
 			// trigger & delay sertup
-			delay(200);									// settling time after carriage move
+			delay(SHUTTER_DELAY);									// settling time after carriage move
 			triggerShutter();
 			if ( ++timelapse.imageCount < timelapse.totalImages ) {
+				// include time to make the move and the above shutter delay in the wait time
 				timelapse.waitToMove = true;
 				int moveTime = (int)ceil(INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED);				// inches per step / steps per second = seconds
-				timer.setTimeout((constrain((timelapse.moveInterval - (int)ceil(moveTime)), 1, (int)(MAX_TRAVEL_TIME / (timelapse.totalImages - 1))) * 1000), timelapseMove);
+				timer.setTimeout(((constrain((timelapse.moveInterval - (int)ceil(moveTime)), 1, (int)(MAX_TRAVEL_TIME / (timelapse.totalImages - 1))) * 1000) - SHUTTER_DELAY), timelapseMove);
 #if DEBUG >= 2
 				Serial.println(String("Move time is: ") + String(moveTime));
 				Serial.println(String("NET move time: ") + String((timelapse.moveInterval - (int)ceil(moveTime)) * 1000));
@@ -293,7 +295,7 @@ void timelapseMove ( void ) {
 			}
 		} else {
 			/*
-			 delay has expired, so set up the move
+			 inter-frame delay has expired, so set up the move
 			 when the carriage stops, then complete the move sequence (loop():CARRIAGE_STOP)
 			*/
 #if DEBUG > 2
@@ -375,7 +377,7 @@ void loop ( void ) {
 			}								
 		} else if ( stepsTaken == targetPosition ) {
 			// target reached without hitting the endstop, so simulate it to initiate next step (if any)
-			plannedMoveEnd = true;					// set when we did NOT hit the limit switch
+			plannedMoveEnd = true;					// set when we did NOT hit the limit switch to get here
 			endOfTravel();
 		}
 		break;
@@ -390,6 +392,7 @@ void loop ( void ) {
 		stepper.disableOutputs();
 		running = false;
 		if ( travelStart ) {
+			// almost never zero, but could happen if limit switch is pressed while not moving, for example
 			lastRunDuration = millis() - travelStart;
 			travelStart = 0;
 		}
@@ -401,7 +404,7 @@ void loop ( void ) {
 		break;
 		
 	case CARRIAGE_TRAVEL_REVERSE:
-		// stop the motion in the current direction - move flag will be set in the ISR so new (opposite) movement will be initiaited below
+		// momentarily stop the motion in the current direction - move flag will be set in the ISR so new (opposite) movement will be initiaited below
 		stepper.stop();
 		stepper.runSpeedToPosition();
 		break;
