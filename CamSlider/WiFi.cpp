@@ -40,11 +40,11 @@ extern float						targetSpeed;			// speed in steps/second
 extern unsigned long				travelStart;			// start of curent carriage movement
 extern unsigned long				lastRunDuration;		// duration of last movement
 extern int							stepsTaken;				// counts steps actually executed
-extern bool							running;					// true iff moving the carriage
+extern bool							running;					// true IFF moving the carriage
 
 
 // inline variable substitution
-#define STATE_VAR					"%MODE%"				// mode (video, timelapse, disabled)
+#define STATE_VAR					"%MODE%"					// mode (video, timelapse, disabled)
 #define ENDSTOP_VAR				"%ENDSTOP%"				// endstop state (toggle)
 #define DISTANCE_VAR				"%DISTANCE%"			// req distance to travel
 #define DURATION_VAR				"%DURATION%"			// req travel time
@@ -82,12 +82,13 @@ String	cssFile;													// String copy of CSS file segment
 /*
  user actions in HTML request stream
  also includes URI requests that invoke no action but will send the HTML file anyways (always need to reply to client)
+ this table is searched to-to-bottom, first match, so ensure that tokens are not substrings of each other or the first one will always be found
 */
 #define ACTION_MODE				"MODE_BTN="					// mode button
 #define ACTION_ENDSTOP			"ENDSTOP_BTN="				// endstop state change button
 #define ACTION_DISTANCE			"DISTANCE="					// input distance to travel
 #define ACTION_DURATION			"DURATION="					// input travel duration
-#define ACTION_TL_DISTANCE		"TL_DIST="					// input total timelapse travel distance (different name since it cannot be a substring of DISTANCE)
+#define ACTION_TL_DISTANCE		"TL_DIST="					// input total timelapse travel distance 
 #define ACTION_TL_DURATION		"TL_DURN="					// input total timelapse duration in sec
 #define ACTION_TL_IMAGES		"TL_IMAGES="				// input total number of images to take
 #define ACTION_DIRECTION		"DIRECTION_BTN="			// toggle carriage direction
@@ -129,7 +130,7 @@ const struct {
 	uint8_t	subnet;						// unique subnet to use for gateway address and DHCP assignment
 } ESP_Identifier[ID_TABLE_SIZE] = {
 	{"CAMSLIDER", "camslider", {0xF3, 0xD6}, 30},
-	{"CSPROTO2", "camslider", {0x7E, 0xE3}, 31}
+	{"CSPROTO2", "camslider",  {0x7E, 0xE3}, 31}
 };
 
 /*
@@ -157,10 +158,6 @@ const struct {
 WiFiServer	server(80);						// web server instance	
 WiFiClient	client; 							// client stream
 
-#define MAX_TRAVEL_DISTANCE	80			// maximum possible travel distance (inches)
-#define MAX_TRAVEL_TIME			3600		// maximum possible travel duration (sec)
-#define MAX_IMAGES				1000		// maximum number of images (timelapse mode)
-
 MoveMode sliderMode = MOVE_TIMELAPSE;	// current mode
 
 
@@ -171,7 +168,7 @@ struct {
 } video = {0, 0};
 
 // data for timelapse mode
-TL_Data timelapse = {0, 0, 0, 0, 0, false, false};
+TL_Data timelapse = {0, 0, 0, 0, 0, 0, false, false, false};
 
 extern void statusLED(const uint32_t color, const bool fatal = false);
 extern void timelapseMove(void);
@@ -347,13 +344,12 @@ void sendHTML ( const int code, const char *content_type, const String &body ) {
 
 /*
  depending on what the requested action is, make the appropriate changes to the HTML code stream
- (e.g. variable substation) and state changes to the main sketch code (e.g. increasing brightness) and send the modified HTML
+ (e.g. variable substation) and state changes to the main sketch code and send the modified HTML
  stream to the client
 */
 void sendResponse ( const T_Action actionType, const String &url ) {
 	String 	indexModified;								// all changes made to this String
-	bool		runMode = false;
-	bool		timelapseParamsChanged = false;
+	bool		timelapseParamsChanged = false;		// determines if user movement parameters changed
 
 #if DEBUG > 0
 	Serial.print("ACTION: ");
@@ -451,7 +447,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			*/
 			if ( sliderMode == MOVE_VIDEO ) {
 				if ( running ) {
-					carriageState = CARRIAGE_STOP;
+					carriageState = CARRIAGE_STOP;								// state machine will clear running flag
 				} else {
 					bool conditionsSatisfied = true;
 					
@@ -467,7 +463,6 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 					if ( conditionsSatisfied ) {
 						// travel pos & speed set at input time
 						newMove = true;
-						runMode = true;
 #if DEBUG >= 2
 						Serial.println(String("Move to position: ") + String(targetPosition) + String(" at speed ") + String(targetSpeed));
 #endif
@@ -476,7 +471,8 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 					}
 				}
 			} else if ( sliderMode == MOVE_TIMELAPSE ) {
-				if ( running ) {
+				if ( timelapse.enabled ) {
+					timelapse.enabled = false;
 					carriageState = CARRIAGE_STOP;
 				} else {
 					bool conditionsSatisfied = true;
@@ -503,7 +499,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 						timelapse.imageCount = 0;
 						timelapse.waitToMove = false;
 						timelapse.waitForStop = false;
-						runMode = true;
+						timelapse.enabled = true;
 						timelapseMove();
 					}
 				}
@@ -591,7 +587,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			if ( idx ) {
 				String value = url.substring(idx+1);
 				
-				timelapse.totalImages = constrain(value.toInt(), 1, MAX_IMAGES);
+				timelapse.totalImages = constrain(value.toInt(), 2, MAX_IMAGES);
 #if DEBUG >= 2
 				Serial.println(String("Total images: ") + String(timelapse.totalImages));
 #endif
@@ -604,7 +600,11 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			break;
 		}
 		
-		// substitute current data variables for the placeholders in the base HTML file (COMMON)
+		/*
+		 substitute current data variables for the placeholders in the base HTML file
+		 
+		 COMMON
+		*/
 		switch ( sliderMode ) {
 		case MOVE_DISABLED:
 			indexModified.replace(String(STATE_VAR), String("Disabled"));
@@ -643,7 +643,6 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		}
 		
 		indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Towards") : String("Away"));
-		indexModified.replace(String(START_VAR), runMode ? String("Running") : String("Standby"));
 		
 		// common colors
 		if ( clockwise ) {
@@ -652,31 +651,29 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			indexModified.replace(String(DIRECTION_CSS), String(CSS_ORANGE));
 		}
 
-		if ( runMode ) {
-			indexModified.replace(String(START_CSS), String(CSS_GREEN));
-		} else {
-			indexModified.replace(String(START_CSS), String(CSS_RED));
-		}
-
 		// mode-specific
 		if ( sliderMode == MOVE_VIDEO ) {
 			// variables
 			indexModified.replace(String(DISTANCE_VAR), String(video.travelDistance));
 			indexModified.replace(String(DURATION_VAR), String(video.travelDuration));
 			indexModified.replace(String(SPEED_VAR), String((float)(STEPS_TO_INCHES(targetSpeed)), 2));
+			indexModified.replace(String(START_VAR), running ? String("Running") : String("Standby"));
 			
 			// CSS colors
 			indexModified.replace(String(MODE_CSS), String(CSS_GREEN));
 			indexModified.replace(String(DISTANCE_CSS), distanceTextColor);
 			indexModified.replace(String(DURATION_CSS), durationTextColor);
+			indexModified.replace(String(START_CSS), running ? String(CSS_GREEN) : String(CSS_RED));
 			
 			// status section - stepsTaken will either have the running running total or the total from the last run (or 0 if never run, of course)
 			indexModified.replace(String(TRAVELED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)), 2));
 			if ( running ) {
+				// currently running
 				float t_duration = (float)((millis() - travelStart)/1000.0);
 				indexModified.replace(String(ELAPSED_VAR), String(t_duration, 2));
 				indexModified.replace(String(MEASURED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)/t_duration), 2));
 			} else if ( lastRunDuration ) {
+				// previous run
 				float t_duration = (float)(lastRunDuration/1000.0);
 				indexModified.replace(String(ELAPSED_VAR), String(t_duration, 2));
 				indexModified.replace(String(MEASURED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)/t_duration), 2));
@@ -687,20 +684,20 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		} else if ( sliderMode == MOVE_TIMELAPSE ) {
 			if ( timelapseParamsChanged && ((timelapse.totalDistance > 0) && (timelapse.totalDuration > 0) && (timelapse.totalImages > 0)) ) {
 				// pre-calculate & validate the sequence parameters for user display in status: the number of moves (images) and delay between images (moves)
-				timelapse.moveDistance = (int)floor(timelapse.totalDistance / timelapse.totalImages);
+				timelapse.moveDistance = (int)floor(timelapse.totalDistance / (timelapse.totalImages - 1));
 				if ( timelapse.moveDistance <= 0 ) {
 					// must actually move the stepper for the state machine to function
 					timelapse.moveDistance = 1;
-					timelapse.totalDistance = timelapse.totalImages;
+					timelapse.totalDistance = timelapse.totalImages - 1;
 					totalDistanceTextColor = String("yellow");
 				}
 				
-				timelapse.moveInterval = (int)floor(timelapse.totalDuration / timelapse.totalImages);
-				float moveTime = INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED;						// inches per step / steps per second = seconds
-				if ( (timelapse.moveInterval < (int)ceil(moveTime)) || (timelapse.moveInterval < 1) ) {
+				timelapse.moveInterval = (int)floor(timelapse.totalDuration / (timelapse.totalImages - 1));		
+				int moveTime = (int)ceil(INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED);			// inches per step / steps per second = seconds
+				if ( (timelapse.moveInterval < moveTime) || (timelapse.moveInterval < 1) ) {
 					// minimum interval is the move time or at least 1
-					timelapse.moveInterval = (int)ceil(moveTime) ? (int)ceil(moveTime) : 1;
-					timelapse.totalDuration = timelapse.moveInterval * timelapse.totalImages;
+					timelapse.moveInterval = moveTime >= timelapse.moveInterval ? moveTime : 1;
+					timelapse.totalDuration = timelapse.moveInterval * (timelapse.totalImages - 1);
 					totalDurationTextColor = String("yellow");
 				}
 				timelapse.imageCount = 0;	
@@ -714,11 +711,13 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			indexModified.replace(String(TL_DISTANCE_VAR), String(timelapse.totalDistance));
 			indexModified.replace(String(TL_DURATION_VAR), String(timelapse.totalDuration));
 			indexModified.replace(String(TL_IMAGES_VAR), String(timelapse.totalImages));
+			indexModified.replace(String(START_VAR), timelapse.enabled ? String("Running") : String("Standby"));
 			// colors
 			indexModified.replace(String(MODE_CSS), String(CSS_GREEN));
 			indexModified.replace(String(TL_DISTANCE_CSS), totalDistanceTextColor);
 			indexModified.replace(String(TL_DURATION_CSS), totalDurationTextColor);
 			indexModified.replace(String(TL_IMAGES_CSS), totalImagesTextColor);
+			indexModified.replace(String(START_CSS), timelapse.enabled ? String(CSS_GREEN) : String(CSS_RED));
 			
 			// status
 			indexModified.replace(String(TL_MOVEDIST), String(timelapse.moveDistance));

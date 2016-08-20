@@ -88,7 +88,7 @@ float							targetSpeed = 0.0;						// speed in steps/second
 unsigned long				travelStart = 0;							// start of curent carriage movement
 unsigned long				lastRunDuration = 0;						// duration of last movement
 int							stepsTaken = 0;							// counts steps actually executed
-bool							running = false;							// true iff moving the carriage
+bool							running = false;							// true only while the carriage is in motion
 
 
 
@@ -274,23 +274,27 @@ void triggerShutter ( void ) {
 */
 void timelapseMove ( void ) {
 	
-	if ( (timelapse.totalImages - timelapse.imageCount) > 0 ) {
+	if ( timelapse.enabled && ((timelapse.totalImages - timelapse.imageCount) > 0) ) {
 		if ( !timelapse.waitToMove ) {
+			// trigger & delay sertup
 			delay(200);									// settling time after carriage move
 			triggerShutter();
 			if ( ++timelapse.imageCount < timelapse.totalImages ) {
 				timelapse.waitToMove = true;
-				float moveTime = INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED;				// inches per step / steps per second = seconds
-				timer.setTimeout(((timelapse.moveInterval - (int)ceil(moveTime)) * 1000), timelapseMove);
+				int moveTime = (int)ceil(INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED);				// inches per step / steps per second = seconds
+				timer.setTimeout((constrain((timelapse.moveInterval - (int)ceil(moveTime)), 1, (int)(MAX_TRAVEL_TIME / (timelapse.totalImages - 1))) * 1000), timelapseMove);
 #if DEBUG >= 2
 				Serial.println(String("Move time is: ") + String(moveTime));
 				Serial.println(String("NET move time: ") + String((timelapse.moveInterval - (int)ceil(moveTime)) * 1000));
 #endif
+			} else {
+				// end of sequence
+				timelapse.enabled = false;
 			}
 		} else {
 			/*
 			 delay has expired, so set up the move
-			 when the carriage stops, then complete the move sequence
+			 when the carriage stops, then complete the move sequence (loop():CARRIAGE_STOP)
 			*/
 #if DEBUG > 2
 			Serial.println("Wait complete. Initiating T/L move");
@@ -301,7 +305,7 @@ void timelapseMove ( void ) {
 			targetSpeed = HS24_MAX_SPEED;
 			newMove = true;
 		}
-	}
+	} 
 }
 
 /*
@@ -389,7 +393,7 @@ void loop ( void ) {
 			lastRunDuration = millis() - travelStart;
 			travelStart = 0;
 		}
-		if ( timelapse.waitForStop ) {
+		if ( timelapse.enabled && timelapse.waitForStop ) {
 			// end of a move within a timelapse sequence
 			timelapse.waitForStop = false;
 			timelapseMove();

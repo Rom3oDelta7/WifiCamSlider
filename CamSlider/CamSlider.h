@@ -19,6 +19,10 @@
 #define INCHES_PER_MM		25.4
 #define HS24_MAX_SPEED		592.0					// in steps/sec set using calculator at http://www.daycounter.com/Calculators/Stepper-Motor-Calculator.phtml
 
+#define MAX_TRAVEL_DISTANCE	80					// maximum possible travel distance (inches)
+#define MAX_TRAVEL_TIME			3600				// maximum possible travel duration (sec)
+#define MAX_IMAGES				1000				// maximum number of images (timelapse mode)
+
 #define STEPS_PER_MM			(STEPS_PER_REV / (BELT_PITCH * PULLEY_TEETH))
 #define INCHES_TO_STEPS(I)	(STEPS_PER_MM * (I) * INCHES_PER_MM)
 #define STEPS_TO_INCHES(S)	((S)/(STEPS_PER_MM * INCHES_PER_MM))
@@ -38,6 +42,7 @@ typedef struct {
 	int	imageCount;							// realtime shutter activation count
 	bool	waitToMove;							// waiting to initiate the move
 	bool  waitForStop;						// waiting for the current move to end
+	bool	enabled;								// enable timelapse movement
 } TL_Data;
 
 #endif
