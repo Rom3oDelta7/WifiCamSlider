@@ -407,10 +407,20 @@ void loop ( void ) {
 		break;
 		
 	case PARKED:
-		if ( sliderMode != MOVE_DISABLED ) {
-			statusLED(LED3_PURPLE);					// indicates motors stopped
-		} else {
-			statusLED(LED3_RED);						// controls locked out
+		// set LED color to match mode button on user interface
+		switch ( sliderMode ) {
+		case MOVE_VIDEO:
+			statusLED(LED3_CYAN);
+			break;
+			
+		case MOVE_TIMELAPSE:
+			statusLED(LED3_PURPLE);
+			break;
+			
+		case MOVE_DISABLED:
+		default:
+			statusLED(LED3_RED);
+			break;
 		}
 		// FALLTHRU
 	default:

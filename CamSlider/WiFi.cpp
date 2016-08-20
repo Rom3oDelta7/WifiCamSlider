@@ -40,7 +40,7 @@ extern float						targetSpeed;			// speed in steps/second
 extern unsigned long				travelStart;			// start of curent carriage movement
 extern unsigned long				lastRunDuration;		// duration of last movement
 extern int							stepsTaken;				// counts steps actually executed
-extern bool							running;					// true IFF moving the carriage
+extern bool							running;					// true only while the carriage is in motion
 
 
 // inline variable substitution
@@ -114,7 +114,7 @@ const struct {
 	{ACTION_REFRESH,		NULL_ACTION},			// null actions must be at the end so they don't intercept ones above
 	{"GET / ",				NULL_ACTION},					
 	{"GET /index.html",	NULL_ACTION},
-	{"GET /favicon.ico",	IGNORE}				// always comes after another request, so skip it
+	{"GET /favicon.ico",	IGNORE}					// always comes after another request, so skip it
 };
 
 
@@ -152,6 +152,7 @@ const struct {
 #define CSS_ORANGE				"orangebkgd"
 #define CSS_GREY					"greybkgd"
 #define CSS_BLUE					"bluebkgd"
+#define CSS_CYAN					"cyanbkgd"
 #define CSS_PURPLE				"purplebkgd"
 #define CSS_MAGENTA				"magentabkgd"
 
@@ -362,7 +363,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 
 	/*
 	  Because the CSS colors below must ALWAYS be substituted, we set the normal defaults first
-	  then change as necessary below - cleaner than the alternative of complex logic
+	  then change as necessary below
 	*/
 #if DEBUG > 0
 	Serial.print("MODE: ");
@@ -660,7 +661,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			indexModified.replace(String(START_VAR), running ? String("Running") : String("Standby"));
 			
 			// CSS colors
-			indexModified.replace(String(MODE_CSS), String(CSS_GREEN));
+			indexModified.replace(String(MODE_CSS), String(CSS_CYAN));
 			indexModified.replace(String(DISTANCE_CSS), distanceTextColor);
 			indexModified.replace(String(DURATION_CSS), durationTextColor);
 			indexModified.replace(String(START_CSS), running ? String(CSS_GREEN) : String(CSS_RED));
@@ -713,7 +714,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			indexModified.replace(String(TL_IMAGES_VAR), String(timelapse.totalImages));
 			indexModified.replace(String(START_VAR), timelapse.enabled ? String("Running") : String("Standby"));
 			// colors
-			indexModified.replace(String(MODE_CSS), String(CSS_GREEN));
+			indexModified.replace(String(MODE_CSS), String(CSS_PURPLE));
 			indexModified.replace(String(TL_DISTANCE_CSS), totalDistanceTextColor);
 			indexModified.replace(String(TL_DURATION_CSS), totalDurationTextColor);
 			indexModified.replace(String(TL_IMAGES_CSS), totalImagesTextColor);
