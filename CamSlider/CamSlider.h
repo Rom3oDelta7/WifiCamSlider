@@ -30,11 +30,14 @@ typedef enum { MOVE_DISABLED, MOVE_VIDEO, MOVE_TIMELAPSE } MoveMode;
 
 // timelapse move inputs & parameters
 typedef struct {
+	int	totalDistance;						// total distance traveled for the timelapse sequence (user input)
+	int	totalDuration;						// total timelapse duration (user input)
+	int	totalImages;						// total number of images to take (user input)
 	int	moveDistance;						// distance to move in each interval
 	int	moveInterval;						// delay in sec between moves
-	int	moveTarget;							// total number of moves to take
 	int	moveCount;							// realtime move count
-	int	timerID;								// ID of the current timer
+	bool	waitToMove;							// waiting to initiate the move
+	bool  waitForStop;						// waiting for the current move to end
 } TL_Data;
 
 #endif

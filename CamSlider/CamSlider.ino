@@ -90,6 +90,8 @@ unsigned long				lastRunDuration = 0;						// duration of last movement
 int							stepsTaken = 0;							// counts steps actually executed
 bool							running = false;							// true iff moving the carriage
 
+
+
 /* ===================================== LED =================================================
 
 Status colors (solid):
@@ -265,8 +267,11 @@ void triggerShutter ( void ) {
 
 /*
  timer routine for implementing a set of moves for timelapse photography
- this is called each time the interval is reached, whereupon we should trigger the shutter and initiate a new move
- note that the move (travel) time is included in the delay interval
+ sequence is:
+    trigger the shutter
+	 wait for selected delay time, moving at the end of the window
+	 wait for the move to end
+	 loop
  
  not a real interrupt, so no need for volatile variables
  move parameters have already been verified
@@ -275,20 +280,23 @@ void triggerShutter ( void ) {
 */
 void timelapseMove ( void ) {
 	
-	if ( (timelapse.moveTarget - timelapse.moveCount) > 0 ) {
+	if ( (timelapse.totalImages - timelapse.moveCount) > 0 ) {
 		triggerShutter();
-		// initiate a new move
-		if ( running ) {
-			statusLED(LED3_BLUE, true);						// should never happen
-		}
-		timelapse.moveCount++;
-		targetPosition = (long)INCHES_TO_STEPS(timelapse.moveDistance);
-		targetSpeed = HS24_MAX_SPEED;
-		newMove = true;
-		if ( (timelapse.moveTarget - timelapse.moveCount) > 0 ) {
-			timelapse.timerID = timer.setTimeout(timelapse.moveInterval * 1000, timelapseMove);
+		if ( !timelapse.waitToMove ) {
+			// determine waiting time given time needed to move the carriage
+			float moveTime = INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED;				// inches per step / steps per second = seconds
+			timelapse.waitToMove = true;
+			timer.setTimeout(((timelapse.moveInterval - (int)ceil(moveTime)) * 1000), timelapseMove);
 		} else {
-			timelapse.timerID = -1;
+			/*
+			 delay has expired, so set up the move
+			 when the carriage stops, then complete the move sequence
+			*/
+			timelapse.waitToMove = false;
+			timelapse.waitForStop = true;
+			targetPosition = (long)INCHES_TO_STEPS(timelapse.moveDistance);
+			targetSpeed = HS24_MAX_SPEED;
+			newMove = true;
 		}
 	}
 }
@@ -336,7 +344,7 @@ void loop ( void ) {
 #if DEBUG >= 3
 	static int counter = 0;
 	if ( counter++ > 500 ) {
-		Serial.println(String("Reamaining steps: ") + String(stepper.distanceToGo()) + String(" carriage state: ") + String(carriageState));
+		Serial.println(String("Remaining steps: ") + String(stepper.distanceToGo()) + String(" carriage state: ") + String(carriageState));
 		Serial.println(String("\tPOSITIONS: current: ") + String(stepper.currentPosition()) + String(" target: ") + String(stepper.targetPosition()));
 		counter = 0;
 	}
@@ -378,12 +386,11 @@ void loop ( void ) {
 			lastRunDuration = millis() - travelStart;
 			travelStart = 0;
 		}
-		if ( (timelapse.timerID >= 0) && timer.isEnabled(timelapse.timerID) ) {
-			// if in-progress timelapse move(s), terminate the move series
-			timer.disable(timelapse.timerID);
-			timer.deleteTimer(timelapse.timerID);
-			timelapse.moveTarget = 0;
-			timelapse.timerID = -1;
+		if ( timelapse.waitForStop ) {
+			// end of a move within a timelapse sequence
+			timelapse.waitForStop = false;
+			timelapse.moveCount++;
+			timelapseMove();
 		}
 		break;
 		

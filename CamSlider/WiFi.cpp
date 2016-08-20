@@ -76,14 +76,14 @@ extern bool							running;					// true iff moving the carriage
 #define ACTION_ENDSTOP			"ENDSTOP_BTN="				// endstop state change button
 #define ACTION_DISTANCE			"DIST="						// input distance to travel
 #define ACTION_DURATION			"DURN="						// input travel duration
-#define ACTION_TL_DISTANCE		"TL_DIST="					// input distance for timelapse mode
-#define ACTION_TL_INTERVAL		"TL_INTERVAL="				// delay between timelapse moves
-#define ACTION_TL_COUNT			"TL_COUNT="					// number of moves for timelapse mode
+#define ACTION_TL_DISTANCE		"TL_DIST="					// input total timelapse travel distance
+#define ACTION_TL_DURATION		"TL_DURATION="				// input total timelapse duration in sec
+#define ACTION_TL_IMAGES		"TL_IMAGES="				// input total number of images to take
 #define ACTION_DIRECTION		"DIRECTION_BTN="			// toggle carriage direction
 #define ACTION_START				"START_BTN="				// initiate/stop movement
 #define ACTION_REFRESH			"REFRESH_BTN="				// refresh display
 
-typedef enum { NULL_ACTION, IGNORE, SLIDER_STATE, ENDSTOP_STATE, SET_DISTANCE, SET_DURATION, SET_TL_DISTANCE, SET_TL_INTERVAL, SET_TL_COUNT, SET_DIRECTION, START_STATE } T_Action;
+typedef enum { NULL_ACTION, IGNORE, SLIDER_STATE, ENDSTOP_STATE, SET_DISTANCE, SET_DURATION, SET_TL_DISTANCE, SET_TL_DURATION, SET_TL_IMAGES, SET_DIRECTION, START_STATE } T_Action;
 
 #define ACTION_TABLE_SIZE		13
 const struct {	
@@ -94,8 +94,8 @@ const struct {
 	{ACTION_ENDSTOP, 		ENDSTOP_STATE},
 	{ACTION_DISTANCE,		SET_DISTANCE},
 	{ACTION_TL_DISTANCE,	SET_TL_DISTANCE},
-	{ACTION_TL_INTERVAL,	SET_TL_INTERVAL},
-	{ACTION_TL_COUNT,		SET_TL_COUNT},
+	{ACTION_TL_DURATION,	SET_TL_DURATION},
+	{ACTION_TL_IMAGES,	SET_TL_IMAGES},
 	{ACTION_DURATION,		SET_DURATION},
 	{ACTION_DIRECTION,	SET_DIRECTION},
 	{ACTION_START,			START_STATE},
@@ -124,7 +124,7 @@ const struct {
 /*
  CSS color substitution variables and color defines
 */
-#define MOTOR_CSS					"%MOTOR_CSS%"
+#define MOTOR_CSS					"%MOTOR_CSS%"			// ZZZ -> STATE
 #define ENDSTOP_CSS				"%ENDSTOP_CSS%"
 #define DISTANCE_CSS				"%DISTANCE_CSS%"
 #define DURATION_CSS				"%DURATION_CSS%"
@@ -147,7 +147,7 @@ WiFiClient	client; 							// client stream
 
 #define MAX_TRAVEL_DISTANCE	80			// maximum possible travel distance (inches)
 #define MAX_TRAVEL_TIME			3600		// maximum possible travel duration (sec)
-#define MAX_MOVES					1000		// maximum number of incremental moves (timelapse mode)
+#define MAX_IMAGES				1000		// maximum number of images (timelapse mode)
 
 MoveMode sliderMode = MOVE_TIMELAPSE;	// current mode
 
@@ -158,7 +158,7 @@ struct {
 } video = {0, 0};
 
 // data for timelapse mode
-TL_Data timelapse = {0, 0, 0, 0, 0};
+TL_Data timelapse = {0, 0, 0, 0, 0, false, false};
 
 extern void statusLED(const uint32_t color, const bool fatal = false);
 extern void timelapseMove(void);
@@ -330,9 +330,9 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 	String distanceTextColor = String("white");
 	String durationTextColor = String("white");
 	
-	String moveDistanceTextColor = String("white");
-	String moveIntervalTextColor = String("white");
-	String moveTargetTextColor = String("white");
+	String totalDistanceTextColor = String("white");
+	String totalDurationTextColor = String("white");
+	String totalImagesTextColor = String("white");
 	
 	//process user action
 	if ( actionType != IGNORE ) {
@@ -408,6 +408,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 					}
 					
 					if ( conditionsSatisfied ) {
+						// travel pos & speed set at input time
 						newMove = true;
 #if DEBUG >= 2
 						Serial.println(String("Move to position: ") + String(targetPosition) + String(" at speed ") + String(targetSpeed));
@@ -422,31 +423,27 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 				} else {
 					bool conditionsSatisfied = true;
 					
-					if ( timelapse.moveDistance <= 0 ) {
-						moveDistanceTextColor = String("red");
+					if ( timelapse.totalDistance <= 0 ) {
+						totalDistanceTextColor = String("red");
 						conditionsSatisfied = false;
 					}
-					if ( timelapse.moveInterval <= 0 ) {
-						moveIntervalTextColor = String("red");
+					if ( timelapse.totalDuration <= 0 ) {
+						totalDurationTextColor = String("red");
 						conditionsSatisfied = false;
 					}
-					if ( timelapse.moveTarget <= 0 ) {
-						moveTargetTextColor = String("red");
+					if ( timelapse.totalImages <= 0 ) {
+						totalImagesTextColor = String("red");
 						conditionsSatisfied = false;
 					}
 
 					if ( conditionsSatisfied ) {
-						// verify that the move time is not > the interval
-						float moveTime = INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED;
-						
-						if ( moveTime > (float)timelapse.moveInterval ) {
-							// indicate an error and set interval to the minimum value
-							moveIntervalTextColor = String("red");
-							timelapse.moveInterval = round(moveTime) + 1;
-						} else {
-							timelapse.moveCount = 0;
-							timelapseMove();
-						}
+						// calculate the number of moves (images) and delay between images (moves)
+						timelapse.moveDistance = (int)floor(timelapse.totalDistance / timelapse.totalImages);
+						timelapse.moveInterval = (int)floor(timelapse.totalDuration / timelapse.totalImages);
+						timelapse.moveCount = 0;
+						timelapse.waitToMove = false;
+						timelapse.waitForStop = false;
+						timelapseMove();
 					}
 				}
 			}
@@ -455,6 +452,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		/*
 		 VIDEO MODE
 		 in this mode, move parameters are built as the commands are entered, then we check before initiatiating a move in START_STATE
+		 calculate speed in each state so data can be entered in any order
 		 so we can display on the interface, calculate stepper params now and not in START_STATE
 		*/
 		case SET_DISTANCE:
@@ -499,40 +497,40 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		 in this mode, individual moves are planned in timelapseMove(), not here
 		*/
 		case SET_TL_DISTANCE:
-			// distance to move each time
+			// distance to move in total
 			idx = url.lastIndexOf('=');
 			if ( idx ) {
 				String value = url.substring(idx+1);
 				
-				timelapse.moveDistance = constrain(value.toInt(), 1, MAX_TRAVEL_DISTANCE);				// ZZZ different maximum value?
+				timelapse.totalDistance = constrain(value.toInt(), 1, MAX_TRAVEL_DISTANCE);
 #if DEBUG >= 2
-				Serial.println(String("Move dist: ") + String(timelapse.moveDistance) + String(" inches "));
+				Serial.println(String("Total dist: ") + String(timelapse.totalDistance) + String(" inches "));
 #endif
 			}
 			break;
 			
-		case SET_TL_INTERVAL:
-			// delay between moves in msec
+		case SET_TL_DURATION:
+			// total elapsed timrelapse seq time
 			idx = url.lastIndexOf('=');
 			if ( idx ) {
 				String value = url.substring(idx+1);
 				
-				timelapse.moveInterval = constrain(value.toInt(), 1, MAX_TRAVEL_TIME);
+				timelapse.totalDuration = constrain(value.toInt(), 1, MAX_TRAVEL_TIME);
 #if DEBUG >= 2
-				Serial.println(String("Move interval: ") + String(timelapse.moveInterval) + String(" sec "));
+				Serial.println(String("Total duration: ") + String(timelapse.totalDuration) + String(" sec "));
 #endif
 			}
 			break;
 			
-		case SET_TL_COUNT:
-			// number of total moves to make
+		case SET_TL_IMAGES:
+			// number of total images to capture
 			idx = url.lastIndexOf('=');
 			if ( idx ) {
 				String value = url.substring(idx+1);
 				
-				timelapse.moveTarget = constrain(value.toInt(), 1, MAX_MOVES);
+				timelapse.totalImages = constrain(value.toInt(), 1, MAX_IMAGES);
 #if DEBUG >= 2
-				Serial.println(String("Move target: ") + String(timelapse.moveTarget) + String(" moves "));
+				Serial.println(String("Total images: ") + String(timelapse.totalImages));
 #endif
 			}
 			break;
