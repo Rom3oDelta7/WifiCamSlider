@@ -344,7 +344,7 @@ void sendHTML ( const int code, const char *content_type, const String &body ) {
 
 
 /*
- depending on what the requested action is, make the appropriate changes to the HTML code stream
+ depending on what the requested action is, make the appropriate changes to the HTML code stream (video or timelapse mode)
  (e.g. variable substation) and state changes to the main sketch code and send the modified HTML
  stream to the client. This is done simply by copying the string with the base HTML code and making modifications 
  to the copy only.

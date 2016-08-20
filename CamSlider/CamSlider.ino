@@ -5,8 +5,6 @@
 	Controls the stepper motor on the slider as well as providing an HTTP server and AP to enable WiFi control from any browser without a WiFI network host.
 	This version supports either a TB6612FNG (H Bridge) or an A4988 (chopper) controller using a WeMos D1 Mini ESP8266 (ESP-12F) devboard.
 	
-	References:
-		Stepper library: http://www.airspayce.com/mikem/arduino/AccelStepper/classAccelStepper.html
 	
 	Prior to running this sketch, the HTML file must be loaded into the ESP8266 SPIFFS file system.
 	Currently, the instructions for installing and running the uplaod tool can be found here: http://esp8266.github.io/Arduino/versions/2.3.0/doc/filesystem.html
@@ -19,11 +17,11 @@
 
 #define DEBUG				0
 //#define TB6612FNG							// TB6612FNG H-bridge controller module
-#define A4988							// Stepstick A4988 controller module
+#define A4988									// Stepstick A4988 controller module
 
-#include <AccelStepper.h>
-#include "LED3.h"
-#include "SimpleTimer.h"
+#include <AccelStepper.h>					// http://www.airspayce.com/mikem/arduino/AccelStepper/classAccelStepper.html
+#include "LED3.h"								// https://github.com/Rom3oDelta7/LED3
+#include "SimpleTimer.h"					// http://playground.arduino.cc/Code/SimpleTimer
 #include "CamSlider.h"
 
 /*================================= stepper motor interface ==============================
@@ -39,6 +37,8 @@ TB6612FNG H Bridge controller:
 	
 Allegro A4988 motor controller
 	http://www.electrodragon.com/w/Stepstick_Stepper_Driver_Board_A4988_V2
+	
+	The AccelStepper library is used for both controllers.
 	
 	
 */
@@ -271,7 +271,6 @@ void triggerShutter ( void ) {
  not a real interrupt, so no need for volatile variables
  move parameters have already been verified
  
- sequence is shutter -> initiate move -> delay interval
 */
 void timelapseMove ( void ) {
 	
@@ -281,7 +280,7 @@ void timelapseMove ( void ) {
 			delay(SHUTTER_DELAY);									// settling time after carriage move
 			triggerShutter();
 			if ( ++timelapse.imageCount < timelapse.totalImages ) {
-				// include time to make the move and the above shutter delay in the wait time
+				// subtract the time to make the move and the above shutter delay from the wait time specified by the user inputs
 				timelapse.waitToMove = true;
 				int moveTime = (int)ceil(INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED);				// inches per step / steps per second = seconds
 				timer.setTimeout(((constrain((timelapse.moveInterval - (int)ceil(moveTime)), 1, (int)(MAX_TRAVEL_TIME / (timelapse.totalImages - 1))) * 1000) - SHUTTER_DELAY), timelapseMove);
