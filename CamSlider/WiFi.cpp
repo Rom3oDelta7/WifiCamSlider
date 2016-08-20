@@ -60,6 +60,10 @@ extern bool							running;					// true iff moving the carriage
 #define TL_MEAS_DIST_VAR		"%TL_MEAS_DIST%"		// distance so far in this timelapse sequence
 #define TL_MOVECOUNT_VAR		"%TL_MOVECOUNT%"		// count of current timelapse moves
 #define TL_REMAINING_VAR		"%TL_REMAINING%"		// timelapse moves to go
+#define TL_MOVEDIST				"%TL_MOVEDIST%"		// incremental move distance in inches
+#define TL_INTERVAL				"%TL_INTERVAL%"		// incremental move interval (including move)
+#define TL_COUNT					"%TL_COUNT%"				// current image count
+
 
 
 // string objects for (static) filesystem contents
@@ -490,9 +494,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 					}
 
 					if ( conditionsSatisfied ) {
-						// calculate the number of moves (images) and delay between images (moves)
-						timelapse.moveDistance = (int)floor(timelapse.totalDistance / timelapse.totalImages);
-						timelapse.moveInterval = (int)floor(timelapse.totalDuration / timelapse.totalImages);
+						// sequence move plan params calculated when last user input was received
 #if DEBUG >= 2
 						Serial.println(String("Timelapse seq: ") + String(timelapse.totalImages) + String (" images moving ") + String(timelapse.moveDistance) + 
 						  String (" in @ interval ") + String(timelapse.moveInterval));
@@ -564,7 +566,33 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 #if DEBUG >= 2
 				Serial.println(String("Total dist: ") + String(timelapse.totalDistance) + String(" inches "));
 #endif
+				if ( (timelapse.totalDistance > 0) && (timelapse.totalDuration > 0) && (timelapse.totalImages > 0) ) {
+					// pre-calculate the sequence parameters for user display in status: the number of moves (images) and delay between images (moves)
+					timelapse.moveDistance = (int)floor(timelapse.totalDistance / timelapse.totalImages);
+					if ( timelapse.moveDistance <= 0 ) {
+						// must actually move the stepper for the state machine to function
+						timelapse.moveDistance = 1;
+						timelapse.totalDistance = timelapse.totalImages;
+						totalDistanceTextColor = String("yellow");
+					}
+					
+					timelapse.moveInterval = (int)floor(timelapse.totalDuration / timelapse.totalImages);
+					float moveTime = INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED;						// inches per step / steps per second = seconds
+					if ( (timelapse.moveInterval < (int)ceil(moveTime)) || (timelapse.moveInterval < 1) ) {
+						// minimum interval is the move time
+						timelapse.moveInterval = (int)ceil(moveTime) ? (int)ceil(moveTime) : 1;
+						timelapse.totalDuration = timelapse.moveInterval * timelapse.totalImages;
+						totalDurationTextColor = String("yellow");
+					}
+
+					
+#if DEBUG >= 2
+					Serial.println(String("Timelapse seq: ") + String(timelapse.totalImages) + String (" images moving ") + String(timelapse.moveDistance) + 
+					  String (" in @ interval ") + String(timelapse.moveInterval));
+#endif				
+				}
 			}
+
 			break;
 			
 		case SET_TL_DURATION:
@@ -577,6 +605,31 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 #if DEBUG >= 2
 				Serial.println(String("Total duration: ") + String(timelapse.totalDuration) + String(" sec "));
 #endif
+				if ( (timelapse.totalDistance > 0) && (timelapse.totalDuration > 0) && (timelapse.totalImages > 0) ) {
+					// pre-calculate the sequence parameters for user display in status: the number of moves (images) and delay between images (moves)
+					timelapse.moveDistance = (int)floor(timelapse.totalDistance / timelapse.totalImages);
+					if ( timelapse.moveDistance <= 0 ) {
+						// must actually move the stepper for the state machine to function
+						timelapse.moveDistance = 1;
+						timelapse.totalDistance = timelapse.totalImages;
+						totalDistanceTextColor = String("yellow");
+					}
+					
+					timelapse.moveInterval = (int)floor(timelapse.totalDuration / timelapse.totalImages);
+					float moveTime = INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED;						// inches per step / steps per second = seconds
+					if ( (timelapse.moveInterval < (int)ceil(moveTime)) || (timelapse.moveInterval < 1) ) {
+						// minimum interval is the move time
+						timelapse.moveInterval = (int)ceil(moveTime) ? (int)ceil(moveTime) : 1;
+						timelapse.totalDuration = timelapse.moveInterval * timelapse.totalImages;
+						totalDurationTextColor = String("yellow");
+					}
+
+					
+#if DEBUG >= 2
+					Serial.println(String("Timelapse seq: ") + String(timelapse.totalImages) + String (" images moving ") + String(timelapse.moveDistance) + 
+					  String (" in @ interval ") + String(timelapse.moveInterval));
+#endif				
+				}
 			}
 			break;
 			
@@ -590,6 +643,31 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 #if DEBUG >= 2
 				Serial.println(String("Total images: ") + String(timelapse.totalImages));
 #endif
+				if ( (timelapse.totalDistance > 0) && (timelapse.totalDuration > 0) && (timelapse.totalImages > 0) ) {
+					// pre-calculate the sequence parameters for user display in status: the number of moves (images) and delay between images (moves)
+					timelapse.moveDistance = (int)floor(timelapse.totalDistance / timelapse.totalImages);
+					if ( timelapse.moveDistance <= 0 ) {
+						// must actually move the stepper for the state machine to function
+						timelapse.moveDistance = 1;
+						timelapse.totalDistance = timelapse.totalImages;
+						totalDistanceTextColor = String("yellow");
+					}
+					
+					timelapse.moveInterval = (int)floor(timelapse.totalDuration / timelapse.totalImages);
+					float moveTime = INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED;						// inches per step / steps per second = seconds
+					if ( (timelapse.moveInterval < (int)ceil(moveTime)) || (timelapse.moveInterval < 1) ) {
+						// minimum interval is the move time
+						timelapse.moveInterval = (int)ceil(moveTime) ? (int)ceil(moveTime) : 1;
+						timelapse.totalDuration = timelapse.moveInterval * timelapse.totalImages;
+						totalDurationTextColor = String("yellow");
+					}
+
+					
+#if DEBUG >= 2
+					Serial.println(String("Timelapse seq: ") + String(timelapse.totalImages) + String (" images moving ") + String(timelapse.moveDistance) + 
+					  String (" in @ interval ") + String(timelapse.moveInterval));
+#endif				
+				}
 			}
 			break;
 			
@@ -663,6 +741,21 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			indexModified.replace(String(MODE_CSS), String(CSS_GREEN));
 			indexModified.replace(String(DISTANCE_CSS), distanceTextColor);
 			indexModified.replace(String(DURATION_CSS), durationTextColor);
+			
+			// status section - stepsTaken will either have the running running total or the total from the last run (or 0 if never run, of course)
+			indexModified.replace(String(TRAVELED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)), 2));
+			if ( running ) {
+				float t_duration = (float)((millis() - travelStart)/1000.0);
+				indexModified.replace(String(ELAPSED_VAR), String(t_duration, 2));
+				indexModified.replace(String(MEASURED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)/t_duration), 2));
+			} else if ( lastRunDuration ) {
+				float t_duration = (float)(lastRunDuration/1000.0);
+				indexModified.replace(String(ELAPSED_VAR), String(t_duration, 2));
+				indexModified.replace(String(MEASURED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)/t_duration), 2));
+			} else {
+				indexModified.replace(String(ELAPSED_VAR), String(" "));
+				indexModified.replace(String(MEASURED_VAR), String(" "));
+			}
 		} else if ( sliderMode == MOVE_TIMELAPSE ) {
 			// variables
 			indexModified.replace(String(TL_DISTANCE_VAR), String(timelapse.totalDistance));
@@ -673,25 +766,17 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			indexModified.replace(String(TL_DISTANCE_CSS), totalDistanceTextColor);
 			indexModified.replace(String(TL_DURATION_CSS), totalDurationTextColor);
 			indexModified.replace(String(TL_IMAGES_CSS), totalImagesTextColor);
+			
+			// status
+			indexModified.replace(String(TL_MOVEDIST), String(timelapse.moveDistance));
+			indexModified.replace(String(TL_INTERVAL), String(timelapse.moveInterval));
+			indexModified.replace(String(TL_COUNT), String(timelapse.moveCount));
 		} else {
 			indexModified.replace(String(MODE_CSS), String(CSS_RED));
 		}
 		
 		
-		// status section - stepsTaken will either have the running running total or the total from the last run (or 0 if never run, of course)
-		indexModified.replace(String(TRAVELED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)), 2));
-		if ( running ) {
-			float t_duration = (float)((millis() - travelStart)/1000.0);
-			indexModified.replace(String(ELAPSED_VAR), String(t_duration, 2));
-			indexModified.replace(String(MEASURED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)/t_duration), 2));
-		} else if ( lastRunDuration ) {
-			float t_duration = (float)(lastRunDuration/1000.0);
-			indexModified.replace(String(ELAPSED_VAR), String(t_duration, 2));
-			indexModified.replace(String(MEASURED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)/t_duration), 2));
-		} else {
-			indexModified.replace(String(ELAPSED_VAR), String(" "));
-			indexModified.replace(String(MEASURED_VAR), String(" "));
-		}
+		
 
 #if DEBUG >= 3
 		Serial.println("\BODY FILE **MODIFIED**");
