@@ -17,7 +17,7 @@
    
 */
 
-#define DEBUG				0
+#define DEBUG				2
 //#define TB6612FNG							// TB6612FNG H-bridge controller module
 #define A4988							// Stepstick A4988 controller module
 
@@ -105,7 +105,9 @@ Green		carriage in motion
 Error state colors (flashing):
 ------------------------------
 Red		error opening SPIFFS file system
-Yellow	error opening BODY HTML file
+Yellow	error opening Video BODY HTML file
+Purple	error opening Timelapse BODY file
+Cyan		error opening Disabled BODY file
 Orange	error opening CSS HTML file
 Blue     timelapse move error
 
@@ -130,7 +132,6 @@ SimpleTimer timer;														// for timelapse mode
 
 extern 	MoveMode	sliderMode;											// input enable flag
 extern 	TL_Data 	timelapse;											// data for timelapse moves
-uint32_t savedLED3Color;												// saved color value for camera shutter trigger
 
 extern void setupWiFi(void);
 extern void WiFiService(void);
@@ -247,22 +248,13 @@ void setup ( void ) {
 	setupWiFi();
 }
 
-/*
- turn off the LED that indicates the shutter was triggered
- we use this timer routine to avoid calling delay in tiggerShutter()
-*/
-void shutterLEDReset ( void ) {
-	led.setLED3Color(savedLED3Color);
-}
 
 // fire the camera shutter
 void triggerShutter ( void ) {
-	savedLED3Color = led.getLED3Color();
-	led.setLED3Color(LED3_BLUE);
+	led.setLED3Color(LED3_BLUE);								// color will be reset when move starts
 	digitalWrite(CAM_TRIGGER, HIGH);
-	delay(100);
+	delay(250);												// ===== ZZZ DEBUG ZZZ ================================================================
 	digitalWrite(CAM_TRIGGER, LOW);
-	timer.setTimeout(SHUTTER_LED_DURATION, shutterLEDReset);
 }
 
 /*
@@ -272,6 +264,8 @@ void triggerShutter ( void ) {
 	 wait for selected delay time, moving at the end of the window
 	 wait for the move to end
 	 loop
+	 
+	 First 2 states (initial, end of wait) are handled here. The last is handled in loop/CARRIAGE_STOP
  
  not a real interrupt, so no need for volatile variables
  move parameters have already been verified
@@ -281,17 +275,25 @@ void triggerShutter ( void ) {
 void timelapseMove ( void ) {
 	
 	if ( (timelapse.totalImages - timelapse.moveCount) > 0 ) {
-		triggerShutter();
 		if ( !timelapse.waitToMove ) {
-			// determine waiting time given time needed to move the carriage
 			float moveTime = INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED;				// inches per step / steps per second = seconds
+
+			delay(200);									// settling time after carriage move
+			triggerShutter();
 			timelapse.waitToMove = true;
 			timer.setTimeout(((timelapse.moveInterval - (int)ceil(moveTime)) * 1000), timelapseMove);
+#if DEBUG >= 2
+			Serial.println(String("Move time is: ") + String(moveTime));
+			Serial.println(String("NET move time: ") + String((timelapse.moveInterval - (int)ceil(moveTime)) * 1000));
+#endif
 		} else {
 			/*
 			 delay has expired, so set up the move
 			 when the carriage stops, then complete the move sequence
 			*/
+#if DEBUG > 2
+			Serial.println("Wait complete. Initiating T/L move");
+#endif
 			timelapse.waitToMove = false;
 			timelapse.waitForStop = true;
 			targetPosition = (long)INCHES_TO_STEPS(timelapse.moveDistance);

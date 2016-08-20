@@ -1,7 +1,7 @@
 /*
    TABS=3
 
-	camera slider WiF control interface
+	camera slider WiFi control interface
 	
 	Prior to running this sketch, the HTML file must be loaded into the ESP8266 SPIFFS file system.
 	Currently, the instructions for installing and running the uplaod tool can be found here: http://esp8266.github.io/Arduino/versions/2.3.0/doc/filesystem.html
@@ -12,7 +12,7 @@
    
 */
 
-#define DEBUG			0
+#define DEBUG			2
 
 extern "C" {
 	/*
@@ -44,13 +44,13 @@ extern bool							running;					// true iff moving the carriage
 
 
 // inline variable substitution
-#define STATE_VAR					"%MOTOR%"				// mode (video, timelapse, disabled)
+#define STATE_VAR					"%MODE%"				// mode (video, timelapse, disabled)
 #define ENDSTOP_VAR				"%ENDSTOP%"				// endstop state (toggle)
 #define DISTANCE_VAR				"%DISTANCE%"			// req distance to travel
 #define DURATION_VAR				"%DURATION%"			// req travel time
 #define TL_DISTANCE_VAR			"%TL_DISTANCE%"		// timelapse move distance (per move)
-#define TL_INTERVAL_VAR			"%TL_INTERVAL%"		// interval between timelapse moves
-#define TL_COUNT_VAR				"%TL_COUNT%"			// number of moves in a timelapse sequence
+#define TL_DURATION_VAR			"%TL_DURATION%"		// interval between timelapse moves
+#define TL_IMAGES_VAR			"%TL_IMAGES%"			// number of moves in a timelapse sequence
 #define SPEED_VAR					"%SPEED%"				// speed translated form user inputs
 #define DIRECTION_VAR			"%DIRECTION%"			// direction of travel (fwd/rev)
 #define START_VAR					"%START%"				// running/standby
@@ -63,21 +63,28 @@ extern bool							running;					// true iff moving the carriage
 
 
 // string objects for (static) filesystem contents
-#define BODY_FILE					"/body.html"				// html code <body>
+#define VIDEO_BODY_FILE			"/video_body.html"		// html code <body> for video mode
+#define TIMELAPSE_BODY_FILE	"/timelapse_body.html"	// html code <body> for timelapse mode
+#define DISABLED_BODY_FILE		"/disabled_body.html"	// very short body with just the state mode button
 #define CSS_FILE					"/css.html"					// static CSS HTML contents to reduce burden on String objects
 #define STRING_MAX				3000							// max String obj length for holding HTML file content
+#define STRING_MAX_SHORT		512							// for smaller files
 
+String	videoBodyFile;											// String copy of video body file segment
+String	timelapseBodyFile;									// String copy of timelapse body file segment
+String	disabledBodyFile;										// String copy of disabled mode body file segment
+String	cssFile;													// String copy of CSS file segment
 
 /*
  user actions in HTML request stream
  also includes URI requests that invoke no action but will send the HTML file anyways (always need to reply to client)
 */
-#define ACTION_MOTOR				"MOTOR_BTN="				// motor button
+#define ACTION_MODE				"MODE_BTN="					// mode button
 #define ACTION_ENDSTOP			"ENDSTOP_BTN="				// endstop state change button
-#define ACTION_DISTANCE			"DIST="						// input distance to travel
-#define ACTION_DURATION			"DURN="						// input travel duration
-#define ACTION_TL_DISTANCE		"TL_DIST="					// input total timelapse travel distance
-#define ACTION_TL_DURATION		"TL_DURATION="				// input total timelapse duration in sec
+#define ACTION_DISTANCE			"DISTANCE="					// input distance to travel
+#define ACTION_DURATION			"DURATION="					// input travel duration
+#define ACTION_TL_DISTANCE		"TL_DIST="					// input total timelapse travel distance (different name since it cannot be a substring of DISTANCE)
+#define ACTION_TL_DURATION		"TL_DURN="					// input total timelapse duration in sec
 #define ACTION_TL_IMAGES		"TL_IMAGES="				// input total number of images to take
 #define ACTION_DIRECTION		"DIRECTION_BTN="			// toggle carriage direction
 #define ACTION_START				"START_BTN="				// initiate/stop movement
@@ -90,13 +97,13 @@ const struct {
 	char 		action[20];
 	T_Action	type;
 } actionTable[ACTION_TABLE_SIZE] = {
-	{ACTION_MOTOR, 		SLIDER_STATE},
+	{ACTION_MODE, 			SLIDER_STATE},
 	{ACTION_ENDSTOP, 		ENDSTOP_STATE},
 	{ACTION_DISTANCE,		SET_DISTANCE},
+	{ACTION_DURATION,		SET_DURATION},
 	{ACTION_TL_DISTANCE,	SET_TL_DISTANCE},
 	{ACTION_TL_DURATION,	SET_TL_DURATION},
 	{ACTION_TL_IMAGES,	SET_TL_IMAGES},
-	{ACTION_DURATION,		SET_DURATION},
 	{ACTION_DIRECTION,	SET_DIRECTION},
 	{ACTION_START,			START_STATE},
 	{ACTION_REFRESH,		NULL_ACTION},			// null actions must be at the end so they don't intercept ones above
@@ -124,10 +131,13 @@ const struct {
 /*
  CSS color substitution variables and color defines
 */
-#define MOTOR_CSS					"%MOTOR_CSS%"			// ZZZ -> STATE
+#define MODE_CSS					"%MODE_CSS%"
 #define ENDSTOP_CSS				"%ENDSTOP_CSS%"
 #define DISTANCE_CSS				"%DISTANCE_CSS%"
 #define DURATION_CSS				"%DURATION_CSS%"
+#define TL_DISTANCE_CSS			"%TL_DISTANCE_CSS%"
+#define TL_DURATION_CSS			"%TL_DURATION_CSS%"
+#define TL_IMAGES_CSS			"%TL_IMAGES_CSS%"
 #define DIRECTION_CSS			"%DIRECTION_CSS%"
 #define START_CSS					"%START_CSS%"
 
@@ -140,9 +150,7 @@ const struct {
 #define CSS_PURPLE				"purplebkgd"
 #define CSS_MAGENTA				"magentabkgd"
 
-WiFiServer	server(80);						// web server instance
-String		bodyFile;						// String copy of body file segment
-String		cssFile;							// String copy of CSS file segment	
+WiFiServer	server(80);						// web server instance	
 WiFiClient	client; 							// client stream
 
 #define MAX_TRAVEL_DISTANCE	80			// maximum possible travel distance (inches)
@@ -150,6 +158,7 @@ WiFiClient	client; 							// client stream
 #define MAX_IMAGES				1000		// maximum number of images (timelapse mode)
 
 MoveMode sliderMode = MOVE_TIMELAPSE;	// current mode
+
 
 // data for video move mode
 struct {
@@ -253,19 +262,47 @@ void setupWiFi ( void ) {
 	}
 #endif	
 
-	// open the BODY HTML file on the on-board FS and read it into a String (note that this string is never modified)
-	File serverFile = SPIFFS.open(BODY_FILE, "r");
-	bodyFile.reserve(STRING_MAX);
+	// open the BODY HTML files on the on-board FS and read it into a String (note that this string is never modified)
+	File serverFile = SPIFFS.open(VIDEO_BODY_FILE, "r");
+	videoBodyFile.reserve(STRING_MAX);
 	if ( serverFile ) {
 		if ( serverFile.available() ) {
-			bodyFile = serverFile.readString();
+			videoBodyFile = serverFile.readString();
 		}
 		serverFile.close();;
 	} else {
 #if DEBUG > 0
-		Serial.println("error opening BODY file");
+		Serial.println("error opening Video BODY file");
 #endif
 		statusLED(LED3_YELLOW, true);
+	}
+	
+	serverFile = SPIFFS.open(TIMELAPSE_BODY_FILE, "r");
+	timelapseBodyFile.reserve(STRING_MAX);
+	if ( serverFile ) {
+		if ( serverFile.available() ) {
+			timelapseBodyFile = serverFile.readString();
+		}
+		serverFile.close();;
+	} else {
+#if DEBUG > 0
+		Serial.println("error opening Timelapse BODY file");
+#endif
+		statusLED(LED3_PURPLE, true);
+	}
+	
+	serverFile = SPIFFS.open(DISABLED_BODY_FILE, "r");
+	disabledBodyFile.reserve(STRING_MAX_SHORT);
+	if ( serverFile ) {
+		if ( serverFile.available() ) {
+			disabledBodyFile = serverFile.readString();
+		}
+		serverFile.close();;
+	} else {
+#if DEBUG > 0
+		Serial.println("error opening Disabled BODY file");
+#endif
+		statusLED(LED3_CYAN, true);
 	}
 	
 	// open the CSS file on the on-board FS and read it into a String (note that this string is never modified)
@@ -310,7 +347,8 @@ void sendHTML ( const int code, const char *content_type, const String &body ) {
  stream to the client
 */
 void sendResponse ( const T_Action actionType, const String &url ) {
-	String indexModified = bodyFile;								// all changes made to this String
+	String 	indexModified;								// all changes made to this String
+	bool		runMode = false;
 
 #if DEBUG > 0
 	Serial.print("ACTION: ");
@@ -325,6 +363,17 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 	  Because the CSS colors below must ALWAYS be substituted, we set the normal defaults first
 	  then change as necessary below - cleaner than the alternative of complex logic
 	*/
+#if DEBUG > 0
+	Serial.print("MODE: ");
+	Serial.println(sliderMode);
+#endif
+	if ( sliderMode == MOVE_VIDEO ) {
+		indexModified = videoBodyFile;
+	} else if ( sliderMode == MOVE_TIMELAPSE ) {
+		indexModified = timelapseBodyFile;
+	} else {
+		indexModified = disabledBodyFile;
+	}
 	indexModified.reserve(STRING_MAX);
 	
 	String distanceTextColor = String("white");
@@ -347,14 +396,17 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			switch ( sliderMode ) {
 			case MOVE_DISABLED:
 				sliderMode = MOVE_VIDEO;
+				indexModified = videoBodyFile;
 				break;
 				
 			case MOVE_VIDEO:
 				sliderMode = MOVE_TIMELAPSE;
+				indexModified = timelapseBodyFile;
 				break;
 				
 			case MOVE_TIMELAPSE:
 				sliderMode = MOVE_DISABLED;
+				indexModified = disabledBodyFile;
 				break;
 				
 			default:
@@ -410,6 +462,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 					if ( conditionsSatisfied ) {
 						// travel pos & speed set at input time
 						newMove = true;
+						runMode = true;
 #if DEBUG >= 2
 						Serial.println(String("Move to position: ") + String(targetPosition) + String(" at speed ") + String(targetSpeed));
 #endif
@@ -440,9 +493,14 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 						// calculate the number of moves (images) and delay between images (moves)
 						timelapse.moveDistance = (int)floor(timelapse.totalDistance / timelapse.totalImages);
 						timelapse.moveInterval = (int)floor(timelapse.totalDuration / timelapse.totalImages);
+#if DEBUG >= 2
+						Serial.println(String("Timelapse seq: ") + String(timelapse.totalImages) + String (" images moving ") + String(timelapse.moveDistance) + 
+						  String (" in @ interval ") + String(timelapse.moveInterval));
+#endif
 						timelapse.moveCount = 0;
 						timelapse.waitToMove = false;
 						timelapse.waitForStop = false;
+						runMode = true;
 						timelapseMove();
 					}
 				}
@@ -540,7 +598,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			break;
 		}
 		
-		// substitute current data variables for the placeholders in the base HTML file
+		// substitute current data variables for the placeholders in the base HTML file (COMMON)
 		switch ( sliderMode ) {
 		case MOVE_DISABLED:
 			indexModified.replace(String(STATE_VAR), String("Disabled"));
@@ -577,13 +635,50 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		default:
 			break;
 		}
-
-		indexModified.replace(String(DISTANCE_VAR), String(video.travelDistance));
-		indexModified.replace(String(DURATION_VAR), String(video.travelDuration));
-		indexModified.replace(String(SPEED_VAR), String((float)(STEPS_TO_INCHES(targetSpeed)), 2));
+		
 		indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Towards") : String("Away"));
-		indexModified.replace(String(START_VAR), newMove ? String("Running") : String("Standby"));
-		// stepsTaken will either have the running running total or the total from the last run (or 0 if never run, of course)
+		indexModified.replace(String(START_VAR), runMode ? String("Running") : String("Standby"));
+		
+		// common colors
+		if ( clockwise ) {
+			indexModified.replace(String(DIRECTION_CSS), String(CSS_BLUE));
+		} else {
+			indexModified.replace(String(DIRECTION_CSS), String(CSS_ORANGE));
+		}
+
+		if ( runMode ) {
+			indexModified.replace(String(START_CSS), String(CSS_GREEN));
+		} else {
+			indexModified.replace(String(START_CSS), String(CSS_RED));
+		}
+
+		// mode-specific
+		if ( sliderMode == MOVE_VIDEO ) {
+			// variables
+			indexModified.replace(String(DISTANCE_VAR), String(video.travelDistance));
+			indexModified.replace(String(DURATION_VAR), String(video.travelDuration));
+			indexModified.replace(String(SPEED_VAR), String((float)(STEPS_TO_INCHES(targetSpeed)), 2));
+			
+			// CSS colors
+			indexModified.replace(String(MODE_CSS), String(CSS_GREEN));
+			indexModified.replace(String(DISTANCE_CSS), distanceTextColor);
+			indexModified.replace(String(DURATION_CSS), durationTextColor);
+		} else if ( sliderMode == MOVE_TIMELAPSE ) {
+			// variables
+			indexModified.replace(String(TL_DISTANCE_VAR), String(timelapse.totalDistance));
+			indexModified.replace(String(TL_DURATION_VAR), String(timelapse.totalDuration));
+			indexModified.replace(String(TL_IMAGES_VAR), String(timelapse.totalImages));
+			// colors
+			indexModified.replace(String(MODE_CSS), String(CSS_GREEN));
+			indexModified.replace(String(TL_DISTANCE_CSS), totalDistanceTextColor);
+			indexModified.replace(String(TL_DURATION_CSS), totalDurationTextColor);
+			indexModified.replace(String(TL_IMAGES_CSS), totalImagesTextColor);
+		} else {
+			indexModified.replace(String(MODE_CSS), String(CSS_RED));
+		}
+		
+		
+		// status section - stepsTaken will either have the running running total or the total from the last run (or 0 if never run, of course)
 		indexModified.replace(String(TRAVELED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)), 2));
 		if ( running ) {
 			float t_duration = (float)((millis() - travelStart)/1000.0);
@@ -596,25 +691,6 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		} else {
 			indexModified.replace(String(ELAPSED_VAR), String(" "));
 			indexModified.replace(String(MEASURED_VAR), String(" "));
-		}
-		
-		// change REMAINING color placeholders to corresponding CSS to match current state
-		indexModified.replace(String(DISTANCE_CSS), distanceTextColor);
-		indexModified.replace(String(DURATION_CSS), durationTextColor);
-		if ( clockwise ) {
-			indexModified.replace(String(DIRECTION_CSS), String(CSS_BLUE));
-		} else {
-			indexModified.replace(String(DIRECTION_CSS), String(CSS_ORANGE));
-		}
-		if ( sliderMode != MOVE_DISABLED ) {
-			indexModified.replace(String(MOTOR_CSS), String(CSS_GREEN));
-		} else {
-			indexModified.replace(String(MOTOR_CSS), String(CSS_RED));
-		}
-		if ( newMove ) {
-			indexModified.replace(String(START_CSS), String(CSS_GREEN));
-		} else {
-			indexModified.replace(String(START_CSS), String(CSS_RED));
 		}
 
 #if DEBUG >= 3
