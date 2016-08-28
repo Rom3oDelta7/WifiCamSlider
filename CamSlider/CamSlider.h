@@ -19,7 +19,7 @@
 #define INCHES_PER_MM		25.4
 #define HS24_MAX_SPEED		592.0					// in steps/sec set using calculator at http://www.daycounter.com/Calculators/Stepper-Motor-Calculator.phtml
 
-#define MAX_TRAVEL_DISTANCE	80					// maximum possible travel distance (inches)
+#define MAX_TRAVEL_DISTANCE	120				// maximum possible travel distance (inches)
 #define MAX_TRAVEL_TIME			3600				// maximum possible travel duration (sec)
 #define MAX_IMAGES				1000				// maximum number of images (timelapse mode)
 
@@ -29,7 +29,7 @@
 
 
 typedef enum { STOP_HERE, REVERSE, ONE_CYCLE } EndstopMode;
-typedef enum { CARRIAGE_STOP, CARRIAGE_TRAVEL, CARRIAGE_TRAVEL_REVERSE, PARKED } CarriageMode;
+typedef enum { CARRIAGE_STOP, CARRIAGE_TRAVEL, CARRIAGE_TRAVEL_REVERSE, CARRIAGE_PARKED } CarriageMode;
 typedef enum { MOVE_DISABLED, MOVE_VIDEO, MOVE_TIMELAPSE } MoveMode;
 
 // timelapse move inputs & parameters

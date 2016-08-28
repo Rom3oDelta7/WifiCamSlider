@@ -1,6 +1,7 @@
 /*
    TABS=3
 
+
 	WiFi Camera Slider Controller
 	Controls the stepper motor on the slider as well as providing an HTTP server and AP to enable WiFi control from any browser without a WiFI network host.
 	This version supports either a TB6612FNG (H Bridge) or an A4988 (chopper) controller using a WeMos D1 Mini ESP8266 (ESP-12F) devboard.
@@ -15,7 +16,7 @@
    
 */
 
-#define DEBUG				0
+#define DEBUG				2
 //#define TB6612FNG							// TB6612FNG H-bridge controller module
 #define A4988									// Stepstick A4988 controller module
 
@@ -75,9 +76,9 @@ AccelStepper stepper(AccelStepper::DRIVER, STEP, DIR);
 #define BOUNCE_DELAY		300			// delay window in msec to ignore pin value fluctuation
 
 volatile	bool				newMove = false;							// true when we need to initiate a new move
-volatile bool				clockwise = true;
+volatile bool				clockwise = false;						// false: away, true: towards motor
 volatile EndstopMode		endstopAction = STOP_HERE;				// action to take when an endstop is hit
-volatile CarriageMode	carriageState = PARKED;					// current state of the carriage (for the motion state machine)
+volatile CarriageMode	carriageState = CARRIAGE_PARKED;		// current state of the carriage (for the motion state machine)
 volatile bool				debounce = true;							// ISR debounce control flag (init true to avoid triggering on noise at startup)
 volatile unsigned long 	currentTime = 0;							// set in loop() so we don't have to call it in the ISR
 volatile unsigned long	debounceStart = 0;						// start of debounce window
@@ -101,6 +102,7 @@ Blue		camera triggering
 Purple	Timelapse mode: motors stopped
 Cyan		Video mode: motors stopped
 Red		Disabled mode
+Green		Carriage in motion
 
 Error state colors (flashing):
 ------------------------------
@@ -124,8 +126,8 @@ Orange	error opening CSS HTML file
 #define CAM_TRIGGER		15												// WeMos D8 (pulldown)
 #endif
 
-#define SHUTTER_DELAY	250											// msec to wait after a move for the platform to stabilize
-
+#define SHUTTER_DELAY			500									// msec to wait after a move for the carriage to stabilize
+#define CAM_TRIGGER_DURATION	100									// how long to hold the shutter button down in msec										
 
 LED3			led(LED_RED, LED_GREEN, LED_BLUE, LED3_CATHODE);
 SimpleTimer timer;														// for timelapse mode
@@ -235,6 +237,7 @@ void setup ( void ) {
 	pinMode(LIMIT_MOTOR, INPUT);								// WeMos module pullup resistor on both pins
 	pinMode(LIMIT_END, INPUT);
 	pinMode(CAM_TRIGGER, OUTPUT);								// WeMos pulldown on this pin
+	digitalWrite(CAM_TRIGGER, LOW);
 	
 	stepper.setEnablePin(ENABLE);								// set LOW to standby - internal pulldown in TB6612FNG
 	stepper.setPinsInverted(false, false, true);			// inverted ENABLE pin on Allegro A4988
@@ -247,16 +250,25 @@ void setup ( void ) {
 	attachInterrupt(digitalPinToInterrupt(LIMIT_END), endOfTravel, FALLING);
 	
 	setupWiFi();
+	// close the debounce window to stabilize initialization
+	debounce = true;
+	debounceStart = millis();
 }
 
 
-// fire the camera shutter
+#if defined(A4988)
+/*
+ fire the camera shutter
+*/
 void triggerShutter ( void ) {
 	led.setLED3Color(LED3_BLUE);								// color will be reset when move starts
 	digitalWrite(CAM_TRIGGER, HIGH);
-	delay(250);												// ===== ZZZ DEBUG ZZZ ================================================================
+	delay(CAM_TRIGGER_DURATION);						
 	digitalWrite(CAM_TRIGGER, LOW);
 }
+#elif defined(TB6612FNG)
+void triggerShutter(void){}
+#endif
 
 /*
  small FSM for implementing a set of moves for timelapse photography
@@ -342,13 +354,6 @@ void loop ( void ) {
 	}
 #endif
 
-	// check if the ISR debounce window is now closed
-	currentTime = millis();
-	if ( debounce && ((currentTime - debounceStart) > BOUNCE_DELAY) ) {
-		debounce = false;
-	}
-	
-
 #if DEBUG >= 3
 	static int counter = 0;
 	if ( counter++ > 500 ) {
@@ -387,7 +392,7 @@ void loop ( void ) {
 #endif
 		stepper.stop();
 		stepper.runSpeedToPosition();				// a necessary part of the stop mechanism
-		carriageState = PARKED;						// only place this is set other than initial condition
+		carriageState = CARRIAGE_PARKED;			// only place this is set other than initial condition
 		stepper.disableOutputs();
 		running = false;
 		if ( travelStart ) {
@@ -408,7 +413,7 @@ void loop ( void ) {
 		stepper.runSpeedToPosition();
 		break;
 		
-	case PARKED:
+	case CARRIAGE_PARKED:
 		// set LED color to match mode button on user interface
 		switch ( sliderMode ) {
 		case MOVE_VIDEO:
@@ -429,6 +434,13 @@ void loop ( void ) {
 			break;
 	}
 	
+	// check if it is time to close the debounce window
+	currentTime = millis();
+	if ( debounce && ((currentTime - debounceStart) > BOUNCE_DELAY) ) {
+		debounce = false;
+	}
+	
+	
 	if ( newMove ) {
 		// initiate a new move using current settings
 #if DEBUG >= 1
@@ -436,8 +448,8 @@ void loop ( void ) {
 #endif
 		stepper.setCurrentPosition(0);
 		stepper.moveTo(targetPosition);
-		stepper.setSpeed(clockwise ? targetSpeed : (targetSpeed * -1.0));
-		if ( carriageState == PARKED ) {
+		stepper.setSpeed(clockwise ? targetSpeed : -targetSpeed);
+		if ( carriageState == CARRIAGE_PARKED ) {
 			// enable the motor & controller only if it had been turned off
 			stepper.enableOutputs();
 		}
@@ -447,6 +459,11 @@ void loop ( void ) {
 		stepsTaken = 0;
 		statusLED(LED3_GREEN);
 		newMove = false;
+		if ( (digitalRead(LIMIT_MOTOR) == LOW) || (digitalRead(LIMIT_END) == LOW) ) {
+			//ignore spurrious limit switch triggers when moving off the switch by closing the debounce window at start of the move 
+			debounce = true;
+			debounceStart = millis();
+		}
 	}
 	timer.run();
  }

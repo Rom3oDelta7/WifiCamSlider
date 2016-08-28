@@ -12,7 +12,7 @@
    
 */
 
-#define DEBUG			0
+#define DEBUG			2
 
 extern "C" {
 	/*
@@ -94,10 +94,12 @@ String	cssFile;													// String copy of CSS file segment
 #define ACTION_DIRECTION		"DIRECTION_BTN="			// toggle carriage direction
 #define ACTION_START				"START_BTN="				// initiate/stop movement
 #define ACTION_REFRESH			"REFRESH_BTN="				// refresh display
+#define ACTION_HOME				"HOME_BTN="					// home the carriage
 
-typedef enum { NULL_ACTION, IGNORE, SLIDER_STATE, ENDSTOP_STATE, SET_DISTANCE, SET_DURATION, SET_TL_DISTANCE, SET_TL_DURATION, SET_TL_IMAGES, SET_DIRECTION, START_STATE } T_Action;
+typedef enum { NULL_ACTION, IGNORE, SLIDER_STATE, ENDSTOP_STATE, SET_DISTANCE, SET_DURATION, SET_TL_DISTANCE,
+               SET_TL_DURATION, SET_TL_IMAGES, SET_DIRECTION, START_STATE, HOME_CARRIAGE } T_Action;
 
-#define ACTION_TABLE_SIZE		13
+#define ACTION_TABLE_SIZE		14
 const struct {	
 	char 		action[20];
 	T_Action	type;
@@ -111,6 +113,7 @@ const struct {
 	{ACTION_TL_IMAGES,	SET_TL_IMAGES},
 	{ACTION_DIRECTION,	SET_DIRECTION},
 	{ACTION_START,			START_STATE},
+	{ACTION_HOME,			HOME_CARRIAGE},
 	{ACTION_REFRESH,		NULL_ACTION},			// null actions must be at the end so they don't intercept ones above
 	{"GET / ",				NULL_ACTION},					
 	{"GET /index.html",	NULL_ACTION},
@@ -124,13 +127,13 @@ const struct {
 */
 #define	ID_TABLE_SIZE			2 
 const struct {
-	char 		ssid[10];					// need char arrays not String objects for function call arguments
+	char 		ssid[13];					// need char arrays not String objects for function call arguments
 	char 		password[12];
 	uint8_t 	mac[2];						// last 2 bytes of MAC address
 	uint8_t	subnet;						// unique subnet to use for gateway address and DHCP assignment
 } ESP_Identifier[ID_TABLE_SIZE] = {
-	{"CAMSLIDER", "camslider", {0xF3, 0xD6}, 30},
-	{"CSPROTO2", "camslider",  {0x7E, 0xE3}, 31}
+	{"CAMSLIDER40", "camslider", {0xF3, 0xD6}, 40},
+	{"CSPROTO41", "camslider",   {0x7E, 0xE3}, 41}
 };
 
 /*
@@ -405,11 +408,16 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			switch ( sliderMode ) {
 			case MOVE_DISABLED:
 				sliderMode = MOVE_VIDEO;
+				video.travelDistance = 0;
+				video.travelDuration = 0;
 				indexModified = videoBodyFile;
 				break;
 				
 			case MOVE_VIDEO:
 				sliderMode = MOVE_TIMELAPSE;
+				timelapse.totalDistance = 0;
+				timelapse.totalDuration = 0;
+				timelapse.totalImages = 0;
 				indexModified = timelapseBodyFile;
 				break;
 				
@@ -514,6 +522,15 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			}
 			break;
 
+		case HOME_CARRIAGE:
+			// return the carriage to the home position
+			targetPosition = (long)INCHES_TO_STEPS(MAX_TRAVEL_DISTANCE);
+			targetSpeed = HS24_MAX_SPEED;
+			clockwise = false;							// towards the motor
+			newMove = true;
+			break;
+		
+			
 		/*
 		 VIDEO MODE
 		 in this mode, move parameters are built as the commands are entered, then we check before initiatiating a move in START_STATE
@@ -650,7 +667,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			break;
 		}
 		
-		indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Towards") : String("Away"));
+		indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Away") : String("Towards"));
 		
 		// common colors
 		if ( clockwise ) {
