@@ -294,22 +294,18 @@ void timelapseMove ( void ) {
 			if ( ++timelapse.imageCount < timelapse.totalImages ) {
 				 /*
 				  sequence is : travel move -> stabilization delay -> fire trigger
-				  so the next call to timelapseMove is the total interval - stabilization delay - shutter delay
+				  the delay until next timer call covers the remaining time after moving, stabilization delay,
+				  and shutter trigger time
 				*/
 				timelapse.waitToMove = true;
 				int moveTime = (int)((INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED) * 1000.0);				// inches per step / steps per second = seconds
-				int timerDelay = ((timelapse.moveInterval - CARR_SETTLE_TIME) * 1000) - CAM_TRIGGER_DURATION;
-				if ( timerDelay < moveTime ) {
-					/*
-					 min delay is the time it takes to move the carriage
-					 input validation should prevent this, but just in case ...
-					*/
-					timerDelay = moveTime;
+				int timerDelay = ((timelapse.moveInterval - CARR_SETTLE_TIME) * 1000) - moveTime - CAM_TRIGGER_DURATION;
+				if ( timerDelay < 0 ) {
+					timerDelay = 0;
 				}
 				timer.setTimeout(timerDelay, timelapseMove);
 #if DEBUG >= 2
-				Serial.println(String("Move time is: ") + String(moveTime));
-				Serial.println(String("NET move time: ") + String((timelapse.moveInterval - (int)ceil(moveTime)) * 1000));
+				Serial.println(String("Next timer call: ") + String(timerDelay));
 #endif
 			} else {
 				// end of sequence
@@ -319,6 +315,7 @@ void timelapseMove ( void ) {
 			/*
 			 inter-frame delay has expired, so set up the move
 			 when the carriage stops, then complete the move sequence (loop():CARRIAGE_STOP)
+			 this function is called again in loop:CARRIAGE_STOP
 			*/
 #if DEBUG > 2
 			Serial.println("Wait complete. Initiating T/L move");
