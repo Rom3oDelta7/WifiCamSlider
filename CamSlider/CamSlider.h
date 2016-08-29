@@ -22,6 +22,7 @@
 #define MAX_TRAVEL_DISTANCE	120				// maximum possible travel distance (inches)
 #define MAX_TRAVEL_TIME			3600				// maximum possible travel duration (sec)
 #define MAX_IMAGES				1000				// maximum number of images (timelapse mode)
+#define CARR_SETTLE_TIME		2 					// delay to stabilize carriage before triggering shutter
 
 #define STEPS_PER_MM			(STEPS_PER_REV / (BELT_PITCH * PULLEY_TEETH))
 #define INCHES_TO_STEPS(I)	(STEPS_PER_MM * (I) * INCHES_PER_MM)
@@ -31,6 +32,13 @@
 typedef enum { STOP_HERE, REVERSE, ONE_CYCLE } EndstopMode;
 typedef enum { CARRIAGE_STOP, CARRIAGE_TRAVEL, CARRIAGE_TRAVEL_REVERSE, CARRIAGE_PARKED } CarriageMode;
 typedef enum { MOVE_DISABLED, MOVE_VIDEO, MOVE_TIMELAPSE } MoveMode;
+
+typedef struct {
+	bool				homing;					// indicates a home move action
+	EndstopMode		lastEndstopState;		// saved endstop state
+	long				lastTargetPosition;	// saved stepper position target
+	float				lastTargetSpeed;		// saved target speed
+} Home_State;
 
 // timelapse move inputs & parameters
 typedef struct {

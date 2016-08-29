@@ -12,7 +12,7 @@
    
 */
 
-#define DEBUG			2
+#define DEBUG			0
 
 extern "C" {
 	/*
@@ -63,8 +63,6 @@ extern bool							running;					// true only while the carriage is in motion
 #define TL_MOVEDIST				"%TL_MOVEDIST%"		// incremental move distance in inches
 #define TL_INTERVAL				"%TL_INTERVAL%"		// incremental move interval (including move)
 #define TL_COUNT					"%TL_COUNT%"				// current image count
-
-
 
 // string objects for (static) filesystem contents
 #define VIDEO_BODY_FILE			"/video_body.html"		// html code <body> for video mode
@@ -173,6 +171,9 @@ struct {
 
 // data for timelapse mode
 TL_Data timelapse = {0, 0, 0, 0, 0, 0, false, false, false};
+
+// saved state for homing moves
+Home_State homeState = { false, STOP_HERE, 0, 0.0 };				// these initial values are not used
 
 extern void statusLED(const uint32_t color, const bool fatal = false);
 extern void timelapseMove(void);
@@ -523,9 +524,16 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			break;
 
 		case HOME_CARRIAGE:
+			// save current stepper params to restore after move is complete
+			homeState.homing = true;
+			homeState.lastTargetPosition = targetPosition;
+			homeState.lastTargetSpeed = targetSpeed;
+			homeState.lastEndstopState = endstopAction;
+			
 			// return the carriage to the home position
 			targetPosition = (long)INCHES_TO_STEPS(MAX_TRAVEL_DISTANCE);
 			targetSpeed = HS24_MAX_SPEED;
+			endstopAction = STOP_HERE;
 			clockwise = false;							// towards the motor
 			newMove = true;
 			break;
@@ -576,7 +584,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		
 		/*
 		 TIMELAPSE MODE
-		 in this mode, individual moves are planned in timelapseMove(), not here
+		 in this mode, individual moves are planned in timelapseMove(), not here, so just get the data we need
 		*/
 		case SET_TL_DISTANCE:
 			// distance to move in total
@@ -598,7 +606,8 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			if ( idx ) {
 				String value = url.substring(idx+1);
 				
-				timelapse.totalDuration = constrain(value.toInt(), 1, MAX_TRAVEL_TIME);
+				// carriage needs time to stabalize after a move, so min time is 1 + this delay
+				timelapse.totalDuration = constrain(value.toInt(), CARR_SETTLE_TIME+1, MAX_TRAVEL_TIME);
 #if DEBUG >= 2
 				Serial.println(String("Total duration: ") + String(timelapse.totalDuration) + String(" sec "));
 #endif
@@ -718,10 +727,11 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 				}
 				
 				timelapse.moveInterval = (int)floor(timelapse.totalDuration / (timelapse.totalImages - 1));		
-				int moveTime = (int)ceil(INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED);			// inches per step / steps per second = seconds
-				if ( (timelapse.moveInterval < moveTime) || (timelapse.moveInterval < 1) ) {
-					// minimum interval is the move time or at least 1
-					timelapse.moveInterval = moveTime >= timelapse.moveInterval ? moveTime : 1;
+				int minDelay = (int)ceil(INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED);			// inches per step / steps per second = seconds
+				minDelay += CARR_SETTLE_TIME;
+				if ( timelapse.moveInterval < minDelay ) {
+					// minimum interval is the carriage move time + stabilization delay
+					timelapse.moveInterval = minDelay;
 					timelapse.totalDuration = timelapse.moveInterval * (timelapse.totalImages - 1);
 					totalDurationTextColor = String("yellow");
 				}

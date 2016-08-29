@@ -16,7 +16,7 @@
    
 */
 
-#define DEBUG				2
+#define DEBUG				0
 //#define TB6612FNG							// TB6612FNG H-bridge controller module
 #define A4988									// Stepstick A4988 controller module
 
@@ -76,7 +76,7 @@ AccelStepper stepper(AccelStepper::DRIVER, STEP, DIR);
 #define BOUNCE_DELAY		300			// delay window in msec to ignore pin value fluctuation
 
 volatile	bool				newMove = false;							// true when we need to initiate a new move
-volatile bool				clockwise = false;						// false: away, true: towards motor
+volatile bool				clockwise = true;							// true: away, false: towards motor
 volatile EndstopMode		endstopAction = STOP_HERE;				// action to take when an endstop is hit
 volatile CarriageMode	carriageState = CARRIAGE_PARKED;		// current state of the carriage (for the motion state machine)
 volatile bool				debounce = true;							// ISR debounce control flag (init true to avoid triggering on noise at startup)
@@ -126,7 +126,6 @@ Orange	error opening CSS HTML file
 #define CAM_TRIGGER		15												// WeMos D8 (pulldown)
 #endif
 
-#define SHUTTER_DELAY			500									// msec to wait after a move for the carriage to stabilize
 #define CAM_TRIGGER_DURATION	100									// how long to hold the shutter button down in msec										
 
 LED3			led(LED_RED, LED_GREEN, LED_BLUE, LED3_CATHODE);
@@ -134,6 +133,7 @@ SimpleTimer timer;														// for timelapse mode
 
 extern 	MoveMode	sliderMode;											// input enable flag
 extern 	TL_Data 	timelapse;											// data for timelapse moves
+extern	Home_State homeState;										// saved state for homing moves
 
 extern void setupWiFi(void);
 extern void WiFiService(void);
@@ -288,14 +288,25 @@ void timelapseMove ( void ) {
 	
 	if ( timelapse.enabled && ((timelapse.totalImages - timelapse.imageCount) > 0) ) {
 		if ( !timelapse.waitToMove ) {
-			// trigger & delay sertup
-			delay(SHUTTER_DELAY);									// settling time after carriage move
+			// trigger & delay setup
+			delay(CARR_SETTLE_TIME * 1000);									// settling time after carriage move
 			triggerShutter();
 			if ( ++timelapse.imageCount < timelapse.totalImages ) {
-				// subtract the time to make the move and the above shutter delay from the wait time specified by the user inputs
+				 /*
+				  sequence is : travel move -> stabilization delay -> fire trigger
+				  so the next call to timelapseMove is the total interval - stabilization delay - shutter delay
+				*/
 				timelapse.waitToMove = true;
-				int moveTime = (int)ceil(INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED);				// inches per step / steps per second = seconds
-				timer.setTimeout(((constrain((timelapse.moveInterval - (int)ceil(moveTime)), 1, (int)(MAX_TRAVEL_TIME / (timelapse.totalImages - 1))) * 1000) - SHUTTER_DELAY), timelapseMove);
+				int moveTime = (int)((INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED) * 1000.0);				// inches per step / steps per second = seconds
+				int timerDelay = ((timelapse.moveInterval - CARR_SETTLE_TIME) * 1000) - CAM_TRIGGER_DURATION;
+				if ( timerDelay < moveTime ) {
+					/*
+					 min delay is the time it takes to move the carriage
+					 input validation should prevent this, but just in case ...
+					*/
+					timerDelay = moveTime;
+				}
+				timer.setTimeout(timerDelay, timelapseMove);
 #if DEBUG >= 2
 				Serial.println(String("Move time is: ") + String(moveTime));
 				Serial.println(String("NET move time: ") + String((timelapse.moveInterval - (int)ceil(moveTime)) * 1000));
@@ -396,7 +407,10 @@ void loop ( void ) {
 		stepper.disableOutputs();
 		running = false;
 		if ( travelStart ) {
-			// almost never zero, but could happen if limit switch is pressed while not moving, for example
+			/*
+			 capture elapsed time
+			 almost never zero, but could be  if limit switch is pressed while not moving, for example
+			*/
 			lastRunDuration = millis() - travelStart;
 			travelStart = 0;
 		}
@@ -404,6 +418,13 @@ void loop ( void ) {
 			// end of a move within a timelapse sequence
 			timelapse.waitForStop = false;
 			timelapseMove();
+		}
+		if ( homeState.homing ) {
+			// restore previous state at end of a homing move, otherwise UI and stepper params could conflict
+			homeState.homing = false;
+			targetPosition = homeState.lastTargetPosition;
+			targetSpeed = homeState.lastTargetSpeed;
+			endstopAction = homeState.lastEndstopState;
 		}
 		break;
 		
