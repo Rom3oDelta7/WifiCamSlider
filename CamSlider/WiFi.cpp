@@ -170,7 +170,7 @@ struct {
 } video = {0, 0};
 
 // data for timelapse mode
-TL_Data timelapse = {0, 0, 0, 0, 0, 0, false, false, false};
+TL_Data timelapse = {false, 0, 0, 0, 0, 0, 0, 0, S_SHUTTER};
 
 // saved state for homing moves
 Home_State homeState = { false, STOP_HERE, 0, 0.0 };				// these initial values are not used
@@ -514,8 +514,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 						  String (" in @ interval ") + String(timelapse.moveInterval));
 #endif
 						timelapse.imageCount = 0;
-						timelapse.waitToMove = false;
-						timelapse.waitForStop = false;
+						timelapse.state = S_SHUTTER;
 						timelapse.enabled = true;
 						timelapseMove();
 					}
@@ -607,7 +606,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 				String value = url.substring(idx+1);
 				
 				// carriage needs time to stabalize after a move, so min time is 1 + this delay
-				timelapse.totalDuration = constrain(value.toInt(), CARR_SETTLE_TIME+1, MAX_TRAVEL_TIME);
+				timelapse.totalDuration = constrain(value.toInt(), CARR_SETTLE_SEC, MAX_TRAVEL_TIME);
 #if DEBUG >= 2
 				Serial.println(String("Total duration: ") + String(timelapse.totalDuration) + String(" sec "));
 #endif
@@ -728,7 +727,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 				
 				timelapse.moveInterval = (int)floor(timelapse.totalDuration / (timelapse.totalImages - 1));		
 				int minDelay = (int)ceil(INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED);			// inches per step / steps per second = seconds
-				minDelay += CARR_SETTLE_TIME;
+				minDelay += CARR_SETTLE_SEC;
 				if ( timelapse.moveInterval < minDelay ) {
 					// minimum interval is the carriage move time + stabilization delay
 					timelapse.moveInterval = minDelay;

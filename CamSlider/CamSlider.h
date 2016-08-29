@@ -22,7 +22,8 @@
 #define MAX_TRAVEL_DISTANCE	120				// maximum possible travel distance (inches)
 #define MAX_TRAVEL_TIME			3600				// maximum possible travel duration (sec)
 #define MAX_IMAGES				1000				// maximum number of images (timelapse mode)
-#define CARR_SETTLE_TIME		2 					// delay to stabilize carriage before triggering shutter
+#define CARR_SETTLE_MSEC		2250 				// delay to stabilize carriage before triggering shutter
+#define CARR_SETTLE_SEC			3					// above delay in seconds
 
 #define STEPS_PER_MM			(STEPS_PER_REV / (BELT_PITCH * PULLEY_TEETH))
 #define INCHES_TO_STEPS(I)	(STEPS_PER_MM * (I) * INCHES_PER_MM)
@@ -32,7 +33,9 @@
 typedef enum { STOP_HERE, REVERSE, ONE_CYCLE } EndstopMode;
 typedef enum { CARRIAGE_STOP, CARRIAGE_TRAVEL, CARRIAGE_TRAVEL_REVERSE, CARRIAGE_PARKED } CarriageMode;
 typedef enum { MOVE_DISABLED, MOVE_VIDEO, MOVE_TIMELAPSE } MoveMode;
+typedef enum { S_SHUTTER, S_MOVE, S_DELAY } TL_State;
 
+// state data for carriage homing move
 typedef struct {
 	bool				homing;					// indicates a home move action
 	EndstopMode		lastEndstopState;		// saved endstop state
@@ -40,17 +43,17 @@ typedef struct {
 	float				lastTargetSpeed;		// saved target speed
 } Home_State;
 
-// timelapse move inputs & parameters
+// timelapse move inputs, parameters, state
 typedef struct {
-	int	totalDistance;						// total distance traveled for the timelapse sequence (user input)
-	int	totalDuration;						// total timelapse duration (user input)
-	int	totalImages;						// total number of images to take (user input)
-	int	moveDistance;						// distance to move in each interval
-	int	moveInterval;						// delay in sec between moves
-	int	imageCount;							// realtime shutter activation count
-	bool	waitToMove;							// waiting to initiate the move
-	bool  waitForStop;						// waiting for the current move to end
-	bool	enabled;								// enable timelapse movement
+	bool		enabled;								// enable timelapse movement
+	int		totalDistance;						// total distance traveled for the timelapse sequence (user input)
+	int		totalDuration;						// total timelapse duration (user input)
+	int		totalImages;						// total number of images to take (user input)
+	int		moveDistance;						// distance to move in each interval
+	int		moveInterval;						// delay in sec between moves
+	int		imageCount;							// realtime shutter activation count
+	uint32_t	moveStartTime;						// when move was initiated
+	TL_State	state;								// state for FSM
 } TL_Data;
 
 #endif

@@ -161,24 +161,30 @@ void statusLED ( const uint32_t color, const bool fatal = false ) {
  we clear the debounce flag after the debounce interval expires in loop() if this is called by an interrupt
 */
 void endOfTravel ( void ) {
-	if ( plannedMoveEnd || !debounce ) {
+	if ( plannedMoveEnd ) {
+		// all planned moves stop the carriage
+#if DEBUG > 0
+		Serial.println("**** MOVE END ****");
+#endif
+		carriageState = CARRIAGE_STOP;
+		plannedMoveEnd = false;
+	} else if ( !debounce ) {
 #if DEBUG > 0
 		Serial.println("**** ENDSTOP HIT ****");
 #endif
+		// limit switch triggered
 		switch ( endstopAction ) {
 		case STOP_HERE:
 			carriageState = CARRIAGE_STOP;
-			if ( !plannedMoveEnd ) {
-				// reverse direction IFF we hit the endstop limit switch
-				clockwise = !clockwise;
-			}
+			clockwise = !clockwise;
 			break;
 			
 		case REVERSE:
 			// reverse without stopping
+			// ZZZ - better to continue with the current move rather than initiatiating a new one ??? ZZZ
 			carriageState = CARRIAGE_TRAVEL_REVERSE;
 			clockwise = !clockwise;
-			newMove = true;										// execute the same move parameters in the opporsite direction
+			newMove = true;										// execute the same move parameters in the opposite direction
 			break;
 			
 		case ONE_CYCLE:
@@ -192,13 +198,10 @@ void endOfTravel ( void ) {
 		default:
 			break;
 		}
-		if ( !plannedMoveEnd ) {
-			// set up debounce window (see loop())
-			debounce = true;
-			debounceStart = currentTime;			
-		} else {
-			plannedMoveEnd = false;
-		}
+		
+		// set up debounce window (see loop())
+		debounce = true;
+		debounceStart = currentTime;			
 	}
 }
 
@@ -274,11 +277,11 @@ void triggerShutter(void){}
  small FSM for implementing a set of moves for timelapse photography
  sequence is:
     trigger the shutter
-	 wait for selected delay time, moving at the end of the window
-	 wait for the move to end
+	 pre-move delay
+	 initiate move
+		CARIAGE_STOP state in loop calls this fcn again at end of move seq
+	 set timeout for remaining (post-move) delay (must be > min for carriage settling time)
 	 loop
-	 
-	 First 2 states (initial, end of wait) are handled here. The last is handled in loop/CARRIAGE_STOP
  
  not a real interrupt, so no need for volatile variables
  move parameters have already been verified
@@ -286,47 +289,47 @@ void triggerShutter(void){}
 */
 void timelapseMove ( void ) {
 	
-	if ( timelapse.enabled && ((timelapse.totalImages - timelapse.imageCount) > 0) ) {
-		if ( !timelapse.waitToMove ) {
-			// trigger & delay setup
-			delay(CARR_SETTLE_TIME * 1000);									// settling time after carriage move
+	if ( timelapse.enabled && (timelapse.imageCount < timelapse.totalImages) ) {
+		switch ( timelapse.state ) {
+		case S_SHUTTER:
+			// fire the shutter then initiate first delay
 			triggerShutter();
+			
 			if ( ++timelapse.imageCount < timelapse.totalImages ) {
-				 /*
-				  sequence is : travel move -> stabilization delay -> fire trigger
-				  the delay until next timer call covers the remaining time after moving, stabilization delay,
-				  and shutter trigger time
-				*/
-				timelapse.waitToMove = true;
-				int moveTime = (int)((INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED) * 1000.0);				// inches per step / steps per second = seconds
-				int timerDelay = ((timelapse.moveInterval - CARR_SETTLE_TIME) * 1000) - moveTime - CAM_TRIGGER_DURATION;
-				if ( timerDelay < 0 ) {
-					timerDelay = 0;
-				}
-				timer.setTimeout(timerDelay, timelapseMove);
-#if DEBUG >= 2
-				Serial.println(String("Next timer call: ") + String(timerDelay));
-#endif
+				int moveTime = (int)floor((INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED) * 1000.0);
+				int timerDelay = ((timelapse.moveInterval * 1000) - moveTime) / 2;
+				timelapse.state = S_MOVE;
+				timelapse.moveStartTime = millis();
+				timer.setTimeout(timerDelay < 0 ? 0 : timerDelay, timelapseMove);
 			} else {
-				// end of sequence
+				// final shutter trigger is the end of timelapse sequence
 				timelapse.enabled = false;
 			}
-		} else {
-			/*
-			 inter-frame delay has expired, so set up the move
-			 when the carriage stops, then complete the move sequence (loop():CARRIAGE_STOP)
-			 this function is called again in loop:CARRIAGE_STOP
-			*/
-#if DEBUG > 2
-			Serial.println("Wait complete. Initiating T/L move");
-#endif
-			timelapse.waitToMove = false;
-			timelapse.waitForStop = true;
+			break;
+			
+		case S_MOVE:
+			// move the carriage - motion FSM will return to this fcn
 			targetPosition = (long)INCHES_TO_STEPS(timelapse.moveDistance);
 			targetSpeed = HS24_MAX_SPEED;
+			timelapse.state = S_DELAY;
 			newMove = true;
+			break;
+			
+		case S_DELAY:
+			// move complete; calculate & schedule the delay timeout for remainaing time
+			int timerDelay = (timelapse.moveInterval * 1000) - (millis() - timelapse.moveStartTime);
+			if (timerDelay < CARR_SETTLE_MSEC ) {
+				timerDelay = CARR_SETTLE_MSEC;
+			}
+#if DEBUG >= 2
+			Serial.println(String("Next timer call: ") + String(timerDelay));
+#endif
+			timer.setTimeout(timerDelay, timelapseMove);
+			timelapse.state = S_SHUTTER;
+			break;
+			
 		}
-	} 
+	}
 }
 
 /*
@@ -411,9 +414,8 @@ void loop ( void ) {
 			lastRunDuration = millis() - travelStart;
 			travelStart = 0;
 		}
-		if ( timelapse.enabled && timelapse.waitForStop ) {
+		if ( timelapse.enabled ) {
 			// end of a move within a timelapse sequence
-			timelapse.waitForStop = false;
 			timelapseMove();
 		}
 		if ( homeState.homing ) {
