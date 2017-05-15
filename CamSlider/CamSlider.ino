@@ -16,14 +16,33 @@
    
 */
 
-#define DEBUG				0
-//#define TB6612FNG							// TB6612FNG H-bridge controller module
-#define A4988									// Stepstick A4988 controller module
+#include <EEPROM.h>
+#include <WiFiManager.h>
+#include <ArduinoOTA.h>
+#include <LEDManager.h>
+#include <DebugLib.h>
+#include <ESP8266WebServer.h>
+#include <WiFiUdp.h>
+#include <WiFiServer.h>
+#include <WiFiClientSecure.h>
+#include <WiFiClient.h>
+#include <ESP8266WiFiType.h>
+#include <ESP8266WiFiSTA.h>
+#include <ESP8266WiFiScan.h>
+#include <ESP8266WiFiMulti.h>
+#include <ESP8266WiFiGeneric.h>
+#include <ESP8266WiFiAP.h>
+#include <ESP8266WiFi.h>
+
+#define DEBUG    1                     // selective debug setting
+#define DEBUG_INFO
+#define DEBUG_LOG
 
 #include <AccelStepper.h>					// http://www.airspayce.com/mikem/arduino/AccelStepper/classAccelStepper.html
-#include "LED3.h"								// https://github.com/Rom3oDelta7/LED3
-#include "SimpleTimer.h"					// http://playground.arduino.cc/Code/SimpleTimer
+#include <LEDManager.h>					   // https://github.com/Rom3oDelta7/LEDManager
+#include <SimpleTimer.h>					// http://playground.arduino.cc/Code/SimpleTimer
 #include "CamSlider.h"
+#include "DebugLib.h"
 
 /*================================= stepper motor interface ==============================
 
@@ -33,47 +52,26 @@ This code was written for an OSM 17HS24-0644S stepper motor
 	http://www.omc-stepperonline.com/download/pdf/17HS24-0644S.pdf (datasheet [partially in Chinese])
 	http://www.osmtec.com/stepper_motors.htm (OSM stepper motor catalog)
 	
-TB6612FNG H Bridge controller:
-	https://www.sparkfun.com/products/9457
-	
 Allegro A4988 motor controller
 	http://www.electrodragon.com/w/Stepstick_Stepper_Driver_Board_A4988_V2
-	
-	The AccelStepper library is used for both controllers.
-	
-	
 */
 
 // ================================= stepper ==============================================
 
-#if defined(TB6612FNG)
-#define MOTORA1				14						// WeMos D5
-#define MOTORA2				12						// WeMos D6
-#define MOTORB1				4						// WeMos D2
-#define MOTORB2				5						// WeMos D1
-#define STANDBY				16						// WeMos D0
-#elif defined(A4988)
-#define STEP					16						// WeMos D5
-#define DIR						14						// WeMos D0; HIGH == FWD
-#define ENABLE					12						// WeMos D6
-#endif
+#define STEP				D0						                  // ESP 16
+#define DIR					D5						                  // ESP 14; HIGH == FWD
+#define ENABLE				D6						                  // ESP 12
 
-#if defined(TB6612FNG)
-AccelStepper stepper(AccelStepper::FULL4WIRE, MOTORA1, MOTORA2, MOTORB1, MOTORB2);
-#elif defined(A4988)
 AccelStepper stepper(AccelStepper::DRIVER, STEP, DIR);
-#endif
+
 
 // ================================ slider controls =======================================
-#if defined(TB6612FNG)
-#define LIMIT_MOTOR		0				// motor-side endstop switch pin - WeMos pullup resistor on this pin (D3)
-#define LIMIT_END			13				// other endstop switch pin (D7)
-#elif defined(A4988)
-#define LIMIT_MOTOR		0				// motor-side endstop switch pin - WeMos pullup (D3)
-#define LIMIT_END			2				// other endstop switch pin - WeMos pullup (D4)
-#endif
 
-#define BOUNCE_DELAY		300			// delay window in msec to ignore pin value fluctuation
+#define LIMIT_MOTOR		D3				                        // motor-side endstop switch pin - WeMos pullup (ESP 0)
+#define LIMIT_END			D4				                        // other endstop switch pin - WeMos pullup (ESP 2)
+
+
+#define BOUNCE_DELAY		300			                        // delay window in msec to ignore pin value fluctuation
 
 volatile	bool				newMove = false;							// true when we need to initiate a new move
 volatile bool				clockwise = true;							// true: away, false: towards motor
@@ -97,38 +95,37 @@ bool							running = false;							// true only while the carriage is in motion
 
 Status colors (solid):
 ----------------------
-White		system initializing
-Blue		camera triggering
-Purple	Timelapse mode: motors stopped
-Cyan		Video mode: motors stopped
-Red		Disabled mode
-Green		Carriage in motion
+White		              system initializing
+Blue		              camera triggering
+Purple	              Timelapse mode: motors stopped
+Cyan		              Video mode: motors stopped
+Red		              Disabled mode
+Green		              Carriage in motion
 
 Error state colors (flashing):
 ------------------------------
-Red		error opening SPIFFS file system
-Yellow	error opening Video BODY HTML file
-Purple	error opening Timelapse BODY file
-Cyan		error opening Disabled BODY file
-Orange	error opening CSS HTML file
+Red		              error opening SPIFFS file system
+Yellow	              error opening Video BODY HTML file
+Purple	              error opening Timelapse BODY file
+Cyan		              error opening Disabled BODY file
+Orange	              error opening CSS HTML file
+
+Setup Colors
+------------
+Red/Green alternating  WiFi configuration required
 
 */
 
 // pins
-#if defined(TB6612FNG)
-#define LED_RED			1												// WeMos TX - 1 & 3 MUST BE DISCONNECTED to use the Serial output (TX & RX)
-#define LED_GREEN			3												// WeMos Rx
-#define LED_BLUE			2												// WeMos D4
-#elif defined(A4988)
-#define LED_RED			13												// WeMos D7
-#define LED_GREEN			5												// WeMos D1
-#define LED_BLUE			4												// WeMos D2
-#define CAM_TRIGGER		15												// WeMos D8 (pulldown)
-#endif
+#define LED_RED			D7												// ESP 13
+#define LED_GREEN			D1												// ESP 5
+#define LED_BLUE			D2												// ESP 4
+
+#define CAM_TRIGGER		D8												// ESP 15 (pulldown)
 
 #define CAM_TRIGGER_DURATION	100									// how long to hold the shutter button down in msec										
 
-LED3			led(LED_RED, LED_GREEN, LED_BLUE, LED3_CATHODE);
+RGBLED	   led(LED_RED, LED_GREEN, LED_BLUE);
 SimpleTimer timer;														// for timelapse mode
 
 extern 	MoveMode	sliderMode;											// input enable flag
@@ -140,19 +137,16 @@ extern void WiFiService(void);
 
 
 /*
- light the LED to indicate status - THIS FUNCTION DOES NOT RETURN IF FATAL IS TRUE
+ indicate error status and LED and loop forever ...
 */
-void statusLED ( const uint32_t color, const bool fatal = false ) {
-	if ( fatal ) {
-		while ( true ) {
-			led.setLED3Color(color);
-			delay(250);
-			led.setLED3Color(LED3_OFF);
-			delay(250);
-		}
-	} else {
-		led.setLED3Color(color);
-	}
+void fatalError ( const LEDColor color ) {
+   led.setColor(color);
+   led.setState(LEDState::BLINK_ON);
+   while ( true ) {
+      // avoid WDTs
+      delay(500);
+      yield();
+   }
 }
 
 /*
@@ -163,15 +157,12 @@ void statusLED ( const uint32_t color, const bool fatal = false ) {
 void endOfTravel ( void ) {
 	if ( plannedMoveEnd ) {
 		// all planned moves stop the carriage
-#if DEBUG > 0
-		Serial.println("**** MOVE END ****");
-#endif
+		INFO(F("**** MOVE END ****"), "");
 		carriageState = CARRIAGE_STOP;
 		plannedMoveEnd = false;
 	} else if ( !debounce ) {
-#if DEBUG > 0
-		Serial.println("**** ENDSTOP HIT ****");
-#endif
+		INFO(F("**** ENDSTOP HIT ****"), "");
+
 		// limit switch triggered
 		switch ( endstopAction ) {
 		case STOP_HERE:
@@ -210,30 +201,15 @@ void endOfTravel ( void ) {
 */
 void setup ( void ) {
 #if DEBUG > 0
-	Serial.begin(19200);
-	Serial.println("Initializing ...");
+	Serial.begin(115200);
+	INFO(F("Initializing ..."), ".");
 #endif
 	
 	// housekeeping
-	statusLED(LED3_WHITE);
-#if defined(TB6612FNG)
-#if DEBUG > 0
-	Serial.println(">> TB6612FNG controller configured <<");
-#endif
-	pinMode(MOTORA1, OUTPUT);
-	pinMode(MOTORA2, OUTPUT);
-	pinMode(MOTORB1, OUTPUT);
-	pinMode(MOTORB2, OUTPUT);
-	pinMode(STANDBY, OUTPUT);
-	pinMode(LIMIT_MOTOR, INPUT);								// WeMos pullup resistor
-	pinMode(LIMIT_END, INPUT_PULLUP);
-	
-	stepper.setEnablePin(STANDBY);							// set LOW to standby - internal pulldown in TB6612FNG
+	led.setColor(LEDColor::WHITE);
+   led.setState(LEDState::ON);
+   EEPROM.begin(EEPROMSIZE);                         // for shadow copy of WiFi credentials
 
-#elif defined(A4988)
-#if DEBUG > 0
-	Serial.println(">> A4988 controller configured <<");
-#endif
 	pinMode(STEP, OUTPUT);
 	pinMode(DIR, OUTPUT);
 	pinMode(ENABLE, OUTPUT);
@@ -244,7 +220,6 @@ void setup ( void ) {
 	
 	stepper.setEnablePin(ENABLE);								// set LOW to standby - internal pulldown in TB6612FNG
 	stepper.setPinsInverted(false, false, true);			// inverted ENABLE pin on Allegro A4988
-#endif
 	
 	stepper.setMaxSpeed(HS24_MAX_SPEED);					// max steps/sec 
 	stepper.disableOutputs();									// don't energize the motors or enable controller until user initiates movement
@@ -258,20 +233,16 @@ void setup ( void ) {
 	debounceStart = millis();
 }
 
-
-#if defined(A4988)
 /*
  fire the camera shutter
 */
 void triggerShutter ( void ) {
-	led.setLED3Color(LED3_BLUE);								// color will be reset when move starts
+	led.setColor(LEDColor::BLUE);								// color will be reset when move starts
+   led.setState(LEDState::ON);
 	digitalWrite(CAM_TRIGGER, HIGH);
 	delay(CAM_TRIGGER_DURATION);						
 	digitalWrite(CAM_TRIGGER, LOW);
 }
-#elif defined(TB6612FNG)
-void triggerShutter(void){}
-#endif
 
 /*
  small FSM for implementing a set of moves for timelapse photography
@@ -280,7 +251,7 @@ void triggerShutter(void){}
 	 pre-move delay
 	 initiate move
 		CARIAGE_STOP state in loop calls this fcn again at end of move seq
-	 set timeout for remaining (post-move) delay (must be > min for carriage settling time)
+	 set timeout for remaining (post-move) delay (must be > minimum for carriage settling time)
 	 loop
  
  not a real interrupt, so no need for volatile variables
@@ -336,7 +307,8 @@ void timelapseMove ( void ) {
  LOOP
 */
 void loop ( void ) {
-	
+   static LEDColor lastColor = LEDColor::NONE;
+
 	yield();
 	WiFiService();
 
@@ -436,23 +408,40 @@ void loop ( void ) {
 	case CARRIAGE_PARKED:
 		// set LED color to match mode button on user interface
 		switch ( sliderMode ) {
+      case MOVE_NOT_SET:
+            break;
+
 		case MOVE_VIDEO:
-			statusLED(LED3_CYAN);
+         // only change color on a state change. Otherwise we are constantly resetting the state & preventing blinking
+         if ( lastColor != LEDColor::CYAN ) {
+            led.setColor(LEDColor::CYAN);
+            led.setState(LEDState::BLINK_ON);
+            lastColor = LEDColor::CYAN;
+         }
 			break;
 			
 		case MOVE_TIMELAPSE:
-			statusLED(LED3_PURPLE);
+         if ( lastColor != LEDColor::MAGENTA ) {
+            led.setColor(LEDColor::MAGENTA);
+            led.setState(LEDState::BLINK_ON);
+            lastColor = LEDColor::MAGENTA;
+         }
 			break;
 			
 		case MOVE_DISABLED:
 		default:
-			statusLED(LED3_RED);
+         if ( lastColor != LEDColor::RED ) {
+            led.setColor(LEDColor::RED);
+            led.setState(LEDState::BLINK_ON);
+            lastColor = LEDColor::RED;
+         }
 			break;
 		}
 		// FALLTHRU
 	default:
 			break;
 	}
+   INFO(F("LED state"), led.getState());
 	
 	// check if it is time to close the debounce window
 	currentTime = millis();
@@ -477,7 +466,8 @@ void loop ( void ) {
 		travelStart = millis();
 		running = true;
 		stepsTaken = 0;
-		statusLED(LED3_GREEN);
+      led.setColor(LEDColor::GREEN);
+      led.setState(LEDState::ON);
 		newMove = false;
 		if ( (digitalRead(LIMIT_MOTOR) == LOW) || (digitalRead(LIMIT_END) == LOW) ) {
 			//ignore spurrious limit switch triggers when moving off the switch by closing the debounce window at start of the move 

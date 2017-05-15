@@ -12,7 +12,10 @@
    
 */
 
-#define DEBUG			0
+#define DEBUG			1
+#define DEBUG_ERROR
+#define DEBUG_INFO
+#define DEBUG_LOG
 
 extern "C" {
 	/*
@@ -26,9 +29,13 @@ extern "C" {
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h> 
 #include <ESP8266WebServer.h>
-#include "FS.h"
-#include "LED3.h"
+#include <FS.h>
+#include <LEDManager.h>                           //  download from https://github.com/Rom3oDelta7/LEDManager
+#include <WiFiManager.h>                          // [Local Modifications] tapzu Wifi Manager RD7 fork: https://github.com/Rom3oDelta7/WiFiManager
+#include <ArduinoOTA.h>
+#include <EEPROM.h>
 #include "CamSlider.h"
+#include "DebugLib.h"
 
 // main sketch externs
 extern volatile bool				newMove;					// true when we need to initiate a new move
@@ -41,6 +48,7 @@ extern unsigned long				travelStart;			// start of curent carriage movement
 extern unsigned long				lastRunDuration;		// duration of last movement
 extern int							stepsTaken;				// counts steps actually executed
 extern bool							running;					// true only while the carriage is in motion
+extern RGBLED                 led;                 // status status LED 
 
 
 // inline variable substitution
@@ -92,12 +100,15 @@ String	cssFile;													// String copy of CSS file segment
 #define ACTION_DIRECTION		"DIRECTION_BTN="			// toggle carriage direction
 #define ACTION_START				"START_BTN="				// initiate/stop movement
 #define ACTION_REFRESH			"REFRESH_BTN="				// refresh display
+#define ACTION_FORGET         "FORGET_BTN="           // clear saved user credentials
 #define ACTION_HOME				"HOME_BTN="					// home the carriage
 
-typedef enum { NULL_ACTION, IGNORE, SLIDER_STATE, ENDSTOP_STATE, SET_DISTANCE, SET_DURATION, SET_TL_DISTANCE,
-               SET_TL_DURATION, SET_TL_IMAGES, SET_DIRECTION, START_STATE, HOME_CARRIAGE } T_Action;
+typedef enum:uint8_t { 
+   NULL_ACTION, IGNORE, SLIDER_STATE, ENDSTOP_STATE, SET_DISTANCE, SET_DURATION, SET_TL_DISTANCE,
+   SET_TL_DURATION, SET_TL_IMAGES, SET_DIRECTION, START_STATE, HOME_CARRIAGE, FORGET, 
+} T_Action;
 
-#define ACTION_TABLE_SIZE		14
+#define ACTION_TABLE_SIZE		15
 const struct {	
 	char 		action[20];
 	T_Action	type;
@@ -112,26 +123,11 @@ const struct {
 	{ACTION_DIRECTION,	SET_DIRECTION},
 	{ACTION_START,			START_STATE},
 	{ACTION_HOME,			HOME_CARRIAGE},
+   {ACTION_FORGET,      FORGET},
 	{ACTION_REFRESH,		NULL_ACTION},			// null actions must be at the end so they don't intercept ones above
 	{"GET / ",				NULL_ACTION},					
 	{"GET /index.html",	NULL_ACTION},
 	{"GET /favicon.ico",	IGNORE}					// always comes after another request, so skip it
-};
-
-
-/*
- identity info for each control unit to employ in creating unique network identiies
- capture the last 2 bytes of the ESP8266 MAC address using the MacAddress utility and add here
-*/
-#define	ID_TABLE_SIZE			2 
-const struct {
-	char 		ssid[13];					// need char arrays not String objects for function call arguments
-	char 		password[12];
-	uint8_t 	mac[2];						// last 2 bytes of MAC address
-	uint8_t	subnet;						// unique subnet to use for gateway address and DHCP assignment
-} ESP_Identifier[ID_TABLE_SIZE] = {
-	{"CAMSLIDER40", "camslider", {0xF3, 0xD6}, 40},
-	{"CSPROTO41", "camslider",   {0x7E, 0xE3}, 41}
 };
 
 /*
@@ -160,8 +156,7 @@ const struct {
 WiFiServer	server(80);						// web server instance	
 WiFiClient	client; 							// client stream
 
-MoveMode sliderMode = MOVE_TIMELAPSE;	// current mode
-
+MoveMode sliderMode = MOVE_NOT_SET;	   // current mode
 
 // data for video move mode
 struct {
@@ -175,177 +170,339 @@ TL_Data timelapse = {false, 0, 0, 0, 0, 0, 0, 0, S_SHUTTER};
 // saved state for homing moves
 Home_State homeState = { false, STOP_HERE, 0, 0.0 };				// these initial values are not used
 
-extern void statusLED(const uint32_t color, const bool fatal = false);
+
+bool userConnected = false;              // true once user is connected
+
+extern void fatalError(const LEDColor color);
 extern void timelapseMove(void);
 
 /*
-  WiFi AP & HTTP server initialization
+Create and return a unique WiFi SSID using the ESP8266 WiFi MAC address
+Form the SSID as an IP address so the user knows what address to connect to when in AP mode just in case
+(Even though the config page comes up automatically without the user having to use a browser)
 */
-void setupWiFi ( void ) {
-	uint8_t	mac[WL_MAC_ADDR_LENGTH];
-	uint8_t	subnet;
-	
-	// get MAC address and use this to select ID info for WiFi setup
-#if DEBUG > 0
-	Serial.println("\nConfiguring access point...");
-#endif
-	
-	WiFi.mode(WIFI_AP);
-	WiFi.softAPmacAddress(mac);
-	uint8_t index = ID_TABLE_SIZE;
+String createUniqueSSID (void) {
+   uint8_t  mac[WL_MAC_ADDR_LENGTH];
+   String   uSSID;
 
-	for ( uint8_t i = 0; i < ID_TABLE_SIZE; i++ ) {
-		if ( (ESP_Identifier[i].mac[0] == mac[WL_MAC_ADDR_LENGTH - 2]) && (ESP_Identifier[i].mac[1] == mac[WL_MAC_ADDR_LENGTH - 1]) ) {
-			index = i;
-			break;
-		}
-	}
-	if ( index < ID_TABLE_SIZE ) {
-		WiFi.softAP(ESP_Identifier[index].ssid, ESP_Identifier[index].password);
-		subnet = ESP_Identifier[index].subnet;
-#if DEBUG > 0
-		Serial.print("Mapping successful. Using SSID: ");
-		Serial.println(ESP_Identifier[index].ssid);
-#endif
-	} else {
-		char 	DefaultSSID[12];
-
-		snprintf(DefaultSSID, 12, "DEFAULT%02X%02X", mac[WL_MAC_ADDR_LENGTH - 2], mac[WL_MAC_ADDR_LENGTH - 1]);
-		WiFi.softAP(DefaultSSID);				// no password in the default case
-		subnet = ESP_Identifier[ID_TABLE_SIZE-1].subnet+1;
-#if DEBUG > 0
-		Serial.print("No MAC address match - using default. SSID: ");
-		Serial.println(DefaultSSID);
-#endif
-	}
-	delay(500);
-	
-	// setup the default IP address then remap so each controller has its own subnet address range
-	IPAddress myIP = WiFi.softAPIP();
-#if DEBUG > 0
-	Serial.print("\nInitial AP IP address: ");
-	Serial.println(myIP);
-#endif
-
-	struct ip_info ipinfo;
-	
-	if ( wifi_get_ip_info(SOFTAP_IF, &ipinfo) ) {
-		wifi_softap_dhcps_stop();
-		IP4_ADDR(&ipinfo.ip, 192, 168, subnet, 1);
-		IP4_ADDR(&ipinfo.gw, 192, 168, subnet, 1);
-		IP4_ADDR(&ipinfo.netmask, 255, 255, 255, 0);
-		if ( !wifi_set_ip_info(SOFTAP_IF, &ipinfo) ) {
-#if DEBUG > 0
-			Serial.println("IP address change failed");
-#endif
-		} else {
-			myIP = WiFi.softAPIP();
-#if DEBUG > 0
-			Serial.print("AP IP address CHANGED: ");
-			Serial.println(myIP);
-#endif
-		}
-		wifi_softap_dhcps_start();
-	}
-	
-	// start the server & init the SPIFFS file system
-	server.begin();
-	if ( !SPIFFS.begin() ) {
-#if DEBUG > 0
-		Serial.println("Cannot open SPIFFS file system.");
-#endif
-		statusLED(LED3_RED, true);
-	}
-	
-#if DEBUG >= 2
-	Dir dir = SPIFFS.openDir("/");
-	Serial.println("SPIFFS directory contents:");
-	while (dir.next()) {
-		Serial.print(dir.fileName());
-		File f = dir.openFile("r");
-		Serial.print(": Size: ");
-		Serial.println(f.size());
-	}
-#endif	
-
-	// open the BODY HTML files on the on-board FS and read it into a String (note that this string is never modified)
-	File serverFile = SPIFFS.open(VIDEO_BODY_FILE, "r");
-	videoBodyFile.reserve(STRING_MAX);
-	if ( serverFile ) {
-		if ( serverFile.available() ) {
-			videoBodyFile = serverFile.readString();
-		}
-		serverFile.close();;
-	} else {
-#if DEBUG > 0
-		Serial.println("error opening Video BODY file");
-#endif
-		statusLED(LED3_YELLOW, true);
-	}
-	
-	serverFile = SPIFFS.open(TIMELAPSE_BODY_FILE, "r");
-	timelapseBodyFile.reserve(STRING_MAX);
-	if ( serverFile ) {
-		if ( serverFile.available() ) {
-			timelapseBodyFile = serverFile.readString();
-		}
-		serverFile.close();;
-	} else {
-#if DEBUG > 0
-		Serial.println("error opening Timelapse BODY file");
-#endif
-		statusLED(LED3_PURPLE, true);
-	}
-	
-	serverFile = SPIFFS.open(DISABLED_BODY_FILE, "r");
-	disabledBodyFile.reserve(STRING_MAX_SHORT);
-	if ( serverFile ) {
-		if ( serverFile.available() ) {
-			disabledBodyFile = serverFile.readString();
-		}
-		serverFile.close();;
-	} else {
-#if DEBUG > 0
-		Serial.println("error opening Disabled BODY file");
-#endif
-		statusLED(LED3_CYAN, true);
-	}
-	
-	// open the CSS file on the on-board FS and read it into a String (note that this string is never modified)
-	serverFile = SPIFFS.open(CSS_FILE, "r");
-	cssFile.reserve(STRING_MAX);
-	if ( serverFile ) {
-		if ( serverFile.available() ) {
-			cssFile = serverFile.readString();
-		}
-		serverFile.close();;
-	} else {
-#if DEBUG > 0
-		Serial.println("error opening CSS file");
-#endif
-		statusLED(LED3_ORANGE, true);
-	}
+   WiFi.softAPmacAddress(mac);
+   uSSID = String("WCS ") + String ("10.") + String(mac[WL_MAC_ADDR_LENGTH - 3]) + String(".") + String(mac[WL_MAC_ADDR_LENGTH - 2]) + String(".") + String(mac[WL_MAC_ADDR_LENGTH - 1]);
+   INFO(F("Derived SSID"), uSSID);
+   return uSSID;
 }
 
 /*
-  send body string as formatted HTML to client
-  Because of issues in the String class, we need to output complete HTML file in segments (header, CSS, working HTML code)
+Create a unique class A private IP address using the ESP8266 WiFi MAC address
 */
-void sendHTML ( const int code, const char *content_type, const String &body ) {
-	// header
-	client.println(String("HTTP/1.1 ") + String(code) + String(" OK"));
-	client.println(String("Content-Type: ") + String(content_type));
-	client.println("Connection: close\n");
-	client.println("<!DOCTYPE HTML> <HTML> <HEAD> <TITLE>index.html</TITLE> </HEAD>");
-	
-	// send CSS file contents
-	client.println(cssFile);
-	
-	// send body
-	client.println(body);
-	client.println("</HTML>");
+IPAddress createUniqueIP (void) {
+   uint8_t   mac[WL_MAC_ADDR_LENGTH];
+   IPAddress result;
+
+   WiFi.softAPmacAddress(mac);
+   result[0] = 10;
+   result[1] = mac[WL_MAC_ADDR_LENGTH - 3];
+   result[2] = mac[WL_MAC_ADDR_LENGTH - 2];
+   result[3] = mac[WL_MAC_ADDR_LENGTH - 1];
+   INFO(F("Derived AP IP"), result);
+   return result;
 }
 
+/*
+Create a unique password, again based on MAC address
+Must be 8 characters in length for WiFiManager to accept it
+*/
+String createUniquePassword (void) {
+   uint8_t  mac[WL_MAC_ADDR_LENGTH];
+   char     password[10];
+
+   WiFi.softAPmacAddress(mac);
+   sprintf(password, "WCS%02x%02x%02x", mac[WL_MAC_ADDR_LENGTH - 3], mac[WL_MAC_ADDR_LENGTH - 2], mac[WL_MAC_ADDR_LENGTH - 1]);
+   INFO(F("Password"), password);
+   return String(password);
+}
+
+/*
+this disables the use of the SSID to broadcast the IP address in station+AP mode and sets STA mode
+also enables OTA (over-the-air) firmware updates
+*/
+void STAMode (void) {
+   if (WiFi.getMode() == WIFI_AP_STA) {
+      // switch to STA mode
+      INFO(F("STA+IP => STA mode and enabling OTA"), ".");
+      WiFi.mode(WIFI_STA);
+      WiFi.begin();	                      // Ref: https://github.com/esp8266/Arduino/issues/2352
+
+      /*
+       set up OTA once we have established STA mode
+      */
+      // Port defaults to 8266
+      ArduinoOTA.setPort(8266);
+
+      // Hostname defaults to esp8266-[ChipID]
+      //ArduinoOTA.setHostname("myesp8266");
+
+      // No authentication by default
+      // ArduinoOTA.setPassword((const char *)"123");
+
+      ArduinoOTA.onStart([]() {
+         LOG(PSTR("OTA Start\n"));
+      });
+      ArduinoOTA.onEnd([]() {
+         LOG(PSTR("\nOTA End. Restarting ...\n"));
+         delay(5000);
+         ESP.restart();                          // the OTA library calls restart, but we never return, so force it.
+      });
+      ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+         LOG(PSTR("OTA Progress: %u%%\r"), (progress / (total / 100)));
+      });
+      ArduinoOTA.onError([](ota_error_t error) {
+         LOG(PSTR("OTA Error[%u]: "), error);
+         switch (error) {
+         case OTA_AUTH_ERROR:
+            LOG(PSTR("OTA Auth Failed\n"));
+            break;
+
+         case OTA_BEGIN_ERROR:
+            LOG(PSTR("OTA Begin Failed\n"));
+            break;
+
+         case OTA_CONNECT_ERROR:
+            LOG(PSTR("OTA Connect Failed\n"));
+            break;
+
+         case OTA_RECEIVE_ERROR:
+            LOG(PSTR("OTA Receive Failed\n"));
+            break;
+
+         case OTA_END_ERROR:
+            LOG(PSTR("OTA End Failed\n"));
+            break;
+
+         default:
+            LOG(PSTR("OTA Unknown error\n"));
+            break;
+         }
+      });
+      ArduinoOTA.begin();
+      LOG(PSTR("OTA Ready. IP Address: %s Chip ID %0X\n"), WiFi.localIP().toString().c_str(), ESP.getChipId());
+   }
+}
+
+void setupWiFi (void) {
+   WiFiManager wifiManager;                                     // IP address establishment
+   IPAddress   my_IPAddress = createUniqueIP();                 // unique IP address for AP mode to prevent conflicts with multiple devices
+   String      my_password = createUniquePassword();
+
+   // first check that there are WiFi networks to possibly connect to
+   int netCount = WiFi.scanNetworks();
+   bool connectToAP = false;
+
+   if (netCount > 0) {
+      // try to connect (saved credentials or manual entry if not) and default to AP mode if this fails
+#ifdef DEBUG
+      wifiManager.setDebugOutput(true);
+#else
+      wifiManager.setDebugOutput(false);
+#endif
+
+      INFO(F("Network scan count"), netCount);
+
+      wifiManager.setBreakAfterConfig(true);	                       // undocumented function to return if config unsuccessful
+      wifiManager.setSaveCredentialsInEEPROM(true, CRED_ADDR);      // [Local mod] forces credentials to be saved in EEPROM also
+      wifiManager.setExitButtonLabel("Standalone Mode");            // [Local mod] sets the label on the exit button to clarify the meaning of exiting from the portal
+
+                                                                    //wifiManager.setAPStaticIPConfig(my_IPAddress, my_IPAddress, IPAddress(255, 0, 0, 0));    // use native WiFi class call below instead
+      WiFi.softAPConfig(my_IPAddress, my_IPAddress, IPAddress(255, 0, 0, 0));	                   // workaround for callout issue - see above
+      WiFi.setAutoConnect(true);
+
+      led.setColor(LEDColor::RED, LEDColor::GREEN);                 // indicate setup mode
+      led.setState(LEDState::ALTERNATE, 250);
+      if (wifiManager.autoConnect(createUniqueSSID().c_str(), my_password.c_str())) {
+         // we are connected as a client and the ESP is in STA mode Ref: https://github.com/esp8266/Arduino/issues/2352
+         INFO(F("Connected (STA+IP; local WiFi)"), WiFi.localIP().toString());
+         led.setColor(LEDColor::BLUE);                   // indicates STA mode
+         led.setState(LEDState::ON);
+
+
+         /*
+
+         We also need to know the address of the client as it will be running our HTTP server
+         The trick is to switch to mixed mode and broadcast the local IP address in the AP SSID name.
+         The user can thus find the local address by looking at the scanned SSIDs on their device
+
+         Keep this on until the status is disabled using the HTML "Forget ID" button *** TODO *** needs a better name
+
+         */
+
+         WiFi.mode(WIFI_AP_STA);
+
+         String ssid = String("WCS: ") + WiFi.localIP().toString();
+         INFO(F("Local IP as SSID"), ssid);
+         WiFi.softAP(ssid.c_str());
+         WiFi.softAPConfig(my_IPAddress, my_IPAddress, IPAddress(255, 0, 0, 0));
+
+         //WiFi.reconnect();                                        // supposedly required, but does not work if this is called
+
+#if DEBUG >= 4
+         Serial.println("AP_STA Diag:");
+         WiFi.printDiag(Serial);
+#endif
+
+#if DEBUG >= 2
+         WiFi.printDiag(Serial);
+#endif
+      } else {
+         /*
+         we get here if the credentials on the setup page are incorrect, blank, or the "Exit" button was used
+         */
+         INFO(F("Did not connect to local WiFi"), ".");
+         connectToAP = true;
+      }
+   } else {
+      INFO(F("No WiFI networks"), ".");
+      connectToAP = true;
+   }
+
+   if (connectToAP) {
+      // use AP mode	 - WiFiManager leaves the ESP in AP+STA mode at this point
+      INFO(F("Using AP Mode"), my_IPAddress.toString());
+      led.setColor(LEDColor::PURPLE);                   // indicates AP mode
+      led.setState(LEDState::ON);
+
+      //WiFi.softAP(createUniqueSSID().c_str(), my_password);
+      //WiFi.softAPConfig(my_IPAddress, my_IPAddress, IPAddress(255, 0, 0, 0));
+      WiFi.mode(WIFI_AP);
+
+#if DEBUG >= 3
+      Serial.println(F("AP Diag:"));
+      WiFi.printDiag(Serial);
+#endif
+   }
+
+   // start the server & init the SPIFFS file system
+   server.begin();
+   if (!SPIFFS.begin()) {
+      ERROR(F("Cannot open SPIFFS file system."), ".");
+      fatalError(LEDColor::RED);
+   }
+
+#if DEBUG >= 2
+   Dir dir = SPIFFS.openDir("/");
+   Serial.println("SPIFFS directory contents:");
+   while (dir.next()) {
+      Serial.print(dir.fileName());
+      File f = dir.openFile("r");
+      Serial.print(": Size: ");
+      Serial.println(f.size());
+   }
+#endif	
+
+   // open the BODY HTML files on the on-board FS and read it into a String (note that this string is never modified)
+   File serverFile = SPIFFS.open(VIDEO_BODY_FILE, "r");
+   videoBodyFile.reserve(STRING_MAX);
+   if (serverFile) {
+      if (serverFile.available()) {
+         videoBodyFile = serverFile.readString();
+      }
+      serverFile.close();;
+   } else {
+      ERROR(F("error opening"), F("Video BODY file"));
+      fatalError(LEDColor::MAGENTA);
+   }
+
+   serverFile = SPIFFS.open(TIMELAPSE_BODY_FILE, "r");
+   timelapseBodyFile.reserve(STRING_MAX);
+   if (serverFile) {
+      if (serverFile.available()) {
+         timelapseBodyFile = serverFile.readString();
+      }
+      serverFile.close();;
+   } else {
+      ERROR(F("error opening"), F("Timelapse BODY file"));
+      fatalError(LEDColor::PURPLE);
+   }
+
+   serverFile = SPIFFS.open(DISABLED_BODY_FILE, "r");
+   disabledBodyFile.reserve(STRING_MAX_SHORT);
+   if (serverFile) {
+      if (serverFile.available()) {
+         disabledBodyFile = serverFile.readString();
+      }
+      serverFile.close();;
+   } else {
+      ERROR(F("error opening"), F("Disabled BODY file"));
+      fatalError(LEDColor::CYAN);
+   }
+
+   // open the CSS file on the on-board FS and read it into a String (note that this string is never modified)
+   serverFile = SPIFFS.open(CSS_FILE, "r");
+   cssFile.reserve(STRING_MAX);
+   if (serverFile) {
+      if (serverFile.available()) {
+         cssFile = serverFile.readString();
+      }
+      serverFile.close();;
+   } else {
+      ERROR(F("error opening"), F("CSS file"));
+      fatalError(LEDColor::ORANGE);
+   }
+}
+
+/*
+send body string as formatted HTML to client
+Because of issues in the String class, we need to output complete HTML file in segments (header, CSS, working HTML code)
+*/
+void sendHTML (const int code, const char *content_type, const String &body) {
+   String title;
+
+   // get correct IP to add to page title
+   if (WiFi.getMode() == WIFI_AP) {
+      title = String("WiFi CamSlider ") + WiFi.softAPIP().toString();
+   } else {
+      title = String("WiFi CamSlider ") +  WiFi.localIP().toString();
+   }
+   INFO(F("Sending web page"), title);
+
+   // header
+   client.println(String("HTTP/1.1 ") + String(code) + String(" OK"));
+   client.println(String("Content-Type: ") + String(content_type));
+   client.println("Connection: close\n");
+   client.println(String("<!DOCTYPE HTML> <HTML> <HEAD> <TITLE>") + title + String("</TITLE> </HEAD>"));
+
+   // send CSS file contents
+   client.println(cssFile);
+
+   // send body
+   client.println(body);
+   client.println("</HTML>");
+}
+
+
+/*
+clear saved WiFi credentials             ***TODO*** add command to HTML file
+*/
+void clearCredentials(void) {
+   if (EEPROM.read(CRED_ADDR) == EEPROM_KEY) {
+      // EEPROM backup saved credentials
+      for (int i = 1; i <= sizeof(struct station_config); i++) {
+         EEPROM.write(CRED_ADDR + i, 0);
+      }
+      EEPROM.commit();
+   }
+   /*
+   delete credentials from saved parameter area (last 16KB of flash) using direct ESP SDK library calls
+   while we could call WiFi.disconnect(), it will clear the credentials as well as disconnecting from the AP,
+   which is undesirable in this case
+   */
+   struct station_config conf;
+   wifi_station_get_config(&conf);
+   *conf.ssid = '\0';
+   *conf.password = '\0';
+
+   ETS_UART_INTR_DISABLE();
+   wifi_station_set_config(&conf);
+   ETS_UART_INTR_ENABLE();
+}
 
 /*
  depending on what the requested action is, make the appropriate changes to the HTML code stream (video or timelapse mode)
@@ -361,33 +518,30 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 	String 	indexModified;								// all changes made to this String
 	bool		timelapseParamsChanged = false;		// determines if user movement parameters changed
 
-#if DEBUG > 0
-	Serial.print("ACTION: ");
-	Serial.println(actionType);
-#endif
-#if DEBUG >= 4
-	Serial.println("\nIndex file, unmodified:");
-	Serial.print(indexModified);
-#endif
+	INFO(F("ACTION"), actionType);
 
 	/*
 	  Because the CSS colors below must ALWAYS be substituted, we set the normal defaults first
 	  then change as necessary below
 	*/
 #if DEBUG > 0
-	Serial.print("MODE: ");
-	Serial.println(sliderMode);
+	INFO(F("MODE"), sliderMode);
 #endif
+   // determine what HTML interface file we need based on current mode
 	if ( sliderMode == MOVE_VIDEO ) {
 		indexModified = videoBodyFile;
 		indexModified.reserve(STRING_MAX);
 	} else if ( sliderMode == MOVE_TIMELAPSE ) {
 		indexModified = timelapseBodyFile;
 		indexModified.reserve(STRING_MAX);
-	} else {
+	} else if ( sliderMode ) {
 		indexModified = disabledBodyFile;
 		indexModified.reserve(STRING_MAX_SHORT);
 	}
+#if DEBUG >= 4
+   Serial.println("\nIndex file before modification:");
+   Serial.print(indexModified);
+#endif
 	
 	String distanceTextColor = String("white");
 	String durationTextColor = String("white");
@@ -405,7 +559,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		 COMMON ACTIONS (implementation may be state-specific)
 		*/
 		case SLIDER_STATE:
-			 //toggles state
+			 //toggles state to the next state in sequence
 			switch ( sliderMode ) {
 			case MOVE_DISABLED:
 				sliderMode = MOVE_VIDEO;
@@ -627,6 +781,10 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 				timelapseParamsChanged = true;
 			}
 			break;
+
+      case FORGET:
+         clearCredentials();
+         break;
 			
 		case NULL_ACTION:
 		default:
@@ -747,7 +905,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			indexModified.replace(String(TL_IMAGES_VAR), String(timelapse.totalImages));
 			indexModified.replace(String(START_VAR), timelapse.enabled ? String("Running") : String("Standby"));
 			// colors
-			indexModified.replace(String(MODE_CSS), String(CSS_PURPLE));
+			indexModified.replace(String(MODE_CSS), String(CSS_MAGENTA));
 			indexModified.replace(String(TL_DISTANCE_CSS), totalDistanceTextColor);
 			indexModified.replace(String(TL_DURATION_CSS), totalDurationTextColor);
 			indexModified.replace(String(TL_IMAGES_CSS), totalImagesTextColor);
@@ -764,7 +922,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 		
 
 #if DEBUG >= 3
-		Serial.println("\BODY FILE **MODIFIED**");
+		Serial.println("\n**INDEX FILE MODIFIED**");
 		Serial.print(indexModified);
 #endif
 		// finally, send to the client
@@ -780,15 +938,21 @@ void WiFiService ( void ) {
 	
 	client = server.available();
 	if ( client && client.connected() ) {
-#if DEBUG > 0
-		Serial.println("Client connected");
-#endif
+		INFO(F("Client connected. Connected flag"), userConnected);
+      /*
+       If this is the first time we are connected, disable AP mode broadcast of the IP address
+       and enable OTA mode
+       To be safe, we'll exit now and pick up the user commands on the next iteration
+      */
+      if (!userConnected) {
+         userConnected = true;
+         STAMode();
+         sliderMode = MOVE_TIMELAPSE;                       // set initial default so LED status light will change
+         return;
+      }
 		// retrieve the URI request from the client stream
 		String uri = client.readStringUntil('\r');
-#if DEBUG > 0
-		Serial.print("Client URI: ");
-		Serial.println(uri);
-#endif
+		INFO(F("Client URI"), uri);
 		client.flush();
 		
 		// scan the action table to get the action and send appropriate response
