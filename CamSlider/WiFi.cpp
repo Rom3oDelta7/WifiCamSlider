@@ -366,7 +366,7 @@ void setupWiFi (void) {
    if (connectToAP) {
       // use AP mode	 - WiFiManager leaves the ESP in AP+STA mode at this point
       INFO(F("Using AP Mode"), my_IPAddress.toString());
-      led.setColor(LEDColor::PURPLE);                   // indicates AP mode
+      led.setColor(LEDColor::ORANGE);                   // indicates AP mode
       led.setState(LEDState::ON);
 
       //WiFi.softAP(createUniqueSSID().c_str(), my_password);
