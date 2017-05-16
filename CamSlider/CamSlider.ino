@@ -131,6 +131,7 @@ SimpleTimer timer;														// for timelapse mode
 extern 	MoveMode	sliderMode;											// input enable flag
 extern 	TL_Data 	timelapse;											// data for timelapse moves
 extern	Home_State homeState;										// saved state for homing moves
+extern   bool userConnected;
 
 extern void setupWiFi(void);
 extern void WiFiService(void);
@@ -476,4 +477,7 @@ void loop ( void ) {
 		}
 	}
 	timer.run();
+   if ( userConnected ) {
+      ArduinoOTA.handle();
+   }
  }
