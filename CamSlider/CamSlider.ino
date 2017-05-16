@@ -1,10 +1,10 @@
 /*
    TABS=3
-
-
 	WiFi Camera Slider Controller
-	Controls the stepper motor on the slider as well as providing an HTTP server and AP to enable WiFi control from any browser without a WiFI network host.
-	This version supports either a TB6612FNG (H Bridge) or an A4988 (chopper) controller using a WeMos D1 Mini ESP8266 (ESP-12F) devboard.
+   https://github.com/Rom3oDelta7/WifiCamSlider
+
+	Controls the stepper motor on the slider utilizing an HTTP server (AP or STA mode) to enable WiFi control from any browser with or without without a WiFI network host.
+	This version supports an A4988 (chopper) controller using a WeMos D1 Mini ESP8266 (ESP-12F) devboard.
 	
 	
 	Prior to running this sketch, the HTML file must be loaded into the ESP8266 SPIFFS file system.
@@ -229,6 +229,7 @@ void setup ( void ) {
 	attachInterrupt(digitalPinToInterrupt(LIMIT_END), endOfTravel, FALLING);
 	
 	setupWiFi();
+
 	// close the debounce window to stabilize initialization
 	debounce = true;
 	debounceStart = millis();
@@ -356,7 +357,7 @@ void loop ( void ) {
 		 when moving CCW, the position will increment negatively from 0 (CW = positive)
 		 however, distanceToGo in CCW rotation will start at target and INCREASE (in the negative direction)
 		 ==> we need to check the absolute value of position rather than relying on distanceToGo() which
-		 always increases positively regardless of direction (since it is subtracting a negative number in CCW rotation)
+		 always increases regardless of direction (since it is subtracting a negative number in CCW rotation)
 		*/
 		if ( abs(stepper.currentPosition()) < targetPosition ) {
 			// constant speed - no acceleration
@@ -442,7 +443,7 @@ void loop ( void ) {
 	default:
 			break;
 	}
-   INFO(F("LED state"), led.getState());
+   //INFO(F("LED state"), led.getState());
 	
 	// check if it is time to close the debounce window
 	currentTime = millis();

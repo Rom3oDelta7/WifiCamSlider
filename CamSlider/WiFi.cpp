@@ -208,7 +208,7 @@ IPAddress createUniqueIP (void) {
 }
 
 /*
-Create a unique password, again based on MAC address
+Create a unique password, again based on MAC address, but this time using hexadecimal for the octets
 Must be 8 characters in length for WiFiManager to accept it
 */
 String createUniquePassword (void) {
@@ -232,10 +232,7 @@ void STAMode (void) {
       WiFi.mode(WIFI_STA);
       WiFi.begin();	                      // Ref: https://github.com/esp8266/Arduino/issues/2352
 
-      /*
-       set up OTA once we have established STA mode
-      */
-      // Port defaults to 8266
+      // set up OTA once we have established STA mode
       ArduinoOTA.setPort(8266);
 
       // Hostname defaults to esp8266-[ChipID]
@@ -479,7 +476,7 @@ void sendHTML (const int code, const char *content_type, const String &body) {
 
 
 /*
-clear saved WiFi credentials             ***TODO*** add command to HTML file
+clear saved WiFi credentials
 */
 void clearCredentials(void) {
    if (EEPROM.read(CRED_ADDR) == EEPROM_KEY) {
@@ -528,21 +525,30 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 	INFO(F("MODE"), sliderMode);
 #endif
    // determine what HTML interface file we need based on current mode
-	if ( sliderMode == MOVE_VIDEO ) {
-		indexModified = videoBodyFile;
-		indexModified.reserve(STRING_MAX);
-	} else if ( sliderMode == MOVE_TIMELAPSE ) {
-		indexModified = timelapseBodyFile;
-		indexModified.reserve(STRING_MAX);
-	} else if ( sliderMode ) {
-		indexModified = disabledBodyFile;
-		indexModified.reserve(STRING_MAX_SHORT);
-	}
+   switch ( sliderMode ) {
+   case MOVE_VIDEO:
+      indexModified = videoBodyFile;
+      indexModified.reserve(STRING_MAX);
+      break;
+
+   case MOVE_TIMELAPSE:
+      indexModified = timelapseBodyFile;
+      indexModified.reserve(STRING_MAX);
+      break;
+
+   case MOVE_DISABLED:
+   default:
+      indexModified = disabledBodyFile;
+      indexModified.reserve(STRING_MAX_SHORT);
+      break;
+   }
+	
 #if DEBUG >= 4
    Serial.println("\nIndex file before modification:");
    Serial.print(indexModified);
 #endif
 	
+   // default colors
 	String distanceTextColor = String("white");
 	String durationTextColor = String("white");
 	
@@ -587,7 +593,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 			break;
 			
 		case ENDSTOP_STATE:
-			// toggle endstop state
+			// toggle endstop state to next one in sequence
 			switch ( endstopAction ) {
 			case STOP_HERE:
 				endstopAction = REVERSE;
@@ -632,7 +638,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
 					}
 					
 					if ( conditionsSatisfied ) {
-						// travel pos & speed set at input time
+						// travel position & speed set already at input time, so just set the flag for the FSM to start the move
 						newMove = true;
 #if DEBUG >= 2
 						Serial.println(String("Move to position: ") + String(targetPosition) + String(" at speed ") + String(targetSpeed));
