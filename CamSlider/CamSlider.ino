@@ -156,6 +156,7 @@ void fatalError ( const LEDColor color ) {
  we clear the debounce flag after the debounce interval expires in loop() if this is called by an interrupt
 */
 void endOfTravel ( void ) {
+   led.setState(LEDState::OFF);                       // (briefly) turn off move indicator
 	if ( plannedMoveEnd ) {
 		// all planned moves stop the carriage
 		INFO(F("**** MOVE END ****"), "");
@@ -470,6 +471,7 @@ void loop ( void ) {
 		stepsTaken = 0;
       led.setColor(LEDColor::GREEN);
       led.setState(LEDState::ON);
+      lastColor = LEDColor::GREEN;                      // must set to force LED change in CARRIAGE_PARKED state at end of move
 		newMove = false;
 		if ( (digitalRead(LIMIT_MOTOR) == LOW) || (digitalRead(LIMIT_END) == LOW) ) {
 			//ignore spurrious limit switch triggers when moving off the switch by closing the debounce window at start of the move 
