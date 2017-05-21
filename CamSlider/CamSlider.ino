@@ -93,16 +93,16 @@ bool							running = false;							// true only while the carriage is in motion
 
 /* ===================================== LED =================================================
 
-Status colors (solid):
+Status colors:
 ----------------------
 White		              system initializing
 Blue		              camera triggering
-Purple	              Timelapse mode: motors stopped
-Cyan		              Video mode: motors stopped
-Red		              Disabled mode
+Purple (flashing)	     Timelapse mode: motors stopped
+Cyan  (flashing)	     Video mode: motors stopped
+Red  (flashing)		  Disabled mode
 Green		              Carriage in motion
 
-Error state colors (flashing):
+Error state colors (rapid flashing):
 ------------------------------
 Red		              error opening SPIFFS file system
 Yellow	              error opening Video BODY HTML file
@@ -142,7 +142,7 @@ extern void WiFiService(void);
 */
 void fatalError ( const LEDColor color ) {
    led.setColor(color);
-   led.setState(LEDState::BLINK_ON);
+   led.setState(LEDState::BLINK_ON, 125);
    while ( true ) {
       // avoid WDTs
       delay(500);
@@ -208,7 +208,7 @@ void setup ( void ) {
 #endif
 	
 	// housekeeping
-	led.setColor(LEDColor::WHITE);
+	led.setColor(LEDColor::WHITE);                    // white => initialization
    led.setState(LEDState::ON);
    EEPROM.begin(EEPROMSIZE);                         // for shadow copy of WiFi credentials
 
