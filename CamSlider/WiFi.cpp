@@ -1,10 +1,10 @@
 /*
    TABS=3
 
-	camera slider WiFi control interface
-	
-	Prior to running this sketch, the HTML file must be loaded into the ESP8266 SPIFFS file system.
-	Currently, the instructions for installing and running the uplaod tool can be found here: http://esp8266.github.io/Arduino/versions/2.3.0/doc/filesystem.html
+   camera slider WiFi control interface
+   
+   Prior to running this sketch, the HTML file must be loaded into the ESP8266 SPIFFS file system.
+   Currently, the instructions for installing and running the uplaod tool can be found here: http://esp8266.github.io/Arduino/versions/2.3.0/doc/filesystem.html
 
    Copyright 2016 Rob Redford
    This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
@@ -18,11 +18,11 @@
 #define DEBUG_LOG
 
 extern "C" {
-	/*
+   /*
      uses the ESP8266 SDK API, which is in C, so we need this extern to prevent gcc from mapping the function names to C++ namespace and thus
-	  preventing the link editor from finding these API functions
-	*/
-	#include <user_interface.h>
+     preventing the link editor from finding these API functions
+   */
+   #include <user_interface.h>
 }
 
 
@@ -110,24 +110,24 @@ typedef enum:uint8_t {
 
 #define ACTION_TABLE_SIZE		15
 const struct {	
-	char 		action[20];
-	T_Action	type;
+   char 		action[20];
+   T_Action	type;
 } actionTable[ACTION_TABLE_SIZE] = {
-	{ACTION_MODE, 			SLIDER_STATE},
-	{ACTION_ENDSTOP, 		ENDSTOP_STATE},
-	{ACTION_DISTANCE,		SET_DISTANCE},
-	{ACTION_DURATION,		SET_DURATION},
-	{ACTION_TL_DISTANCE,	SET_TL_DISTANCE},
-	{ACTION_TL_DURATION,	SET_TL_DURATION},
-	{ACTION_TL_IMAGES,	SET_TL_IMAGES},
-	{ACTION_DIRECTION,	SET_DIRECTION},
-	{ACTION_START,			START_STATE},
-	{ACTION_HOME,			HOME_CARRIAGE},
+   {ACTION_MODE, 			SLIDER_STATE},
+   {ACTION_ENDSTOP, 		ENDSTOP_STATE},
+   {ACTION_DISTANCE,		SET_DISTANCE},
+   {ACTION_DURATION,		SET_DURATION},
+   {ACTION_TL_DISTANCE,	SET_TL_DISTANCE},
+   {ACTION_TL_DURATION,	SET_TL_DURATION},
+   {ACTION_TL_IMAGES,	SET_TL_IMAGES},
+   {ACTION_DIRECTION,	SET_DIRECTION},
+   {ACTION_START,			START_STATE},
+   {ACTION_HOME,			HOME_CARRIAGE},
    {ACTION_FORGET,      FORGET},
-	{ACTION_REFRESH,		NULL_ACTION},			// null actions must be at the end so they don't intercept ones above
-	{"GET / ",				NULL_ACTION},					
-	{"GET /index.html",	NULL_ACTION},
-	{"GET /favicon.ico",	IGNORE}					// always comes after another request, so skip it
+   {ACTION_REFRESH,		NULL_ACTION},			// null actions must be at the end so they don't intercept ones above
+   {"GET / ",				NULL_ACTION},					
+   {"GET /index.html",	NULL_ACTION},
+   {"GET /favicon.ico",	IGNORE}					// always comes after another request, so skip it
 };
 
 /*
@@ -155,13 +155,14 @@ const struct {
 
 WiFiServer	server(80);						// web server instance	
 WiFiClient	client; 							// client stream
+#define     AP_CHANNEL         11      // WiFi channel to use for STA+AP mode
 
 MoveMode sliderMode = MOVE_NOT_SET;	   // current mode
 
 // data for video move mode
 struct {
-	int	travelDuration;					// holds travel duration in sec until we convert it to speed
-	int	travelDistance;					// holds travel distance in inches until we convert it to steps
+   int	travelDuration;					// holds travel duration in sec until we convert it to speed
+   int	travelDistance;					// holds travel distance in inches until we convert it to steps
 } video = {0, 0};
 
 // data for timelapse mode
@@ -335,7 +336,7 @@ void setupWiFi (void) {
 
          String ssid = String("WCS: ") + WiFi.localIP().toString();
          INFO(F("Local IP as SSID"), ssid);
-         WiFi.softAP(ssid.c_str());
+         WiFi.softAP(ssid.c_str(), "1nfc^Dh3kAz");                // password only to prevent people from connecting by mistake; channel will be the same as STA mode
          WiFi.softAPConfig(my_IPAddress, my_IPAddress, IPAddress(255, 0, 0, 0));
 
          //WiFi.reconnect();                                        // supposedly required, but does not work if this is called
@@ -366,7 +367,7 @@ void setupWiFi (void) {
       led.setColor(LEDColor::ORANGE);                   // indicates AP mode
       led.setState(LEDState::ON);
 
-      //WiFi.softAP(createUniqueSSID().c_str(), my_password);
+      //WiFi.softAP(createUniqueSSID().c_str(), my_password.c_str(), AP_CHANNEL);
       //WiFi.softAPConfig(my_IPAddress, my_IPAddress, IPAddress(255, 0, 0, 0));
       WiFi.mode(WIFI_AP);
 
@@ -512,17 +513,17 @@ void clearCredentials(void) {
   * text labels will indicated errors in red, "cautions" in yellow (e.g. if parameters were reset to meet min/max limits)
 */
 void sendResponse ( const T_Action actionType, const String &url ) {
-	String 	indexModified;								// all changes made to this String
-	bool		timelapseParamsChanged = false;		// determines if user movement parameters changed
+   String 	indexModified;								// all changes made to this String
+   bool		timelapseParamsChanged = false;		// determines if user movement parameters changed
 
-	INFO(F("ACTION"), actionType);
+   INFO(F("ACTION"), actionType);
 
-	/*
-	  Because the CSS colors below must ALWAYS be substituted, we set the normal defaults first
-	  then change as necessary below
-	*/
+   /*
+     Because the CSS colors below must ALWAYS be substituted, we set the normal defaults first
+     then change as necessary below
+   */
 #if DEBUG > 0
-	INFO(F("MODE"), sliderMode);
+   INFO(F("MODE"), sliderMode);
 #endif
    // determine what HTML interface file we need based on current mode
    switch ( sliderMode ) {
@@ -542,409 +543,409 @@ void sendResponse ( const T_Action actionType, const String &url ) {
       indexModified.reserve(STRING_MAX_SHORT);
       break;
    }
-	
+   
 #if DEBUG >= 4
    Serial.println("\nIndex file before modification:");
    Serial.print(indexModified);
 #endif
-	
+   
    // default colors
-	String distanceTextColor = String("white");
-	String durationTextColor = String("white");
-	
-	String totalDistanceTextColor = String("white");
-	String totalDurationTextColor = String("white");
-	String totalImagesTextColor = String("white");
-	
-	//process user action
-	if ( actionType != IGNORE ) {
-		uint8_t  idx;
+   String distanceTextColor = String("white");
+   String durationTextColor = String("white");
+   
+   String totalDistanceTextColor = String("white");
+   String totalDurationTextColor = String("white");
+   String totalImagesTextColor = String("white");
+   
+   //process user action
+   if ( actionType != IGNORE ) {
+      uint8_t  idx;
 
-		switch ( actionType ) {
-		/*
-		 COMMON ACTIONS (implementation may be state-specific)
-		*/
-		case SLIDER_STATE:
-			 //toggles state to the next state in sequence
-			switch ( sliderMode ) {
-			case MOVE_DISABLED:
-				sliderMode = MOVE_VIDEO;
-				video.travelDistance = 0;
-				video.travelDuration = 0;
-				indexModified = videoBodyFile;
-				break;
-				
-			case MOVE_VIDEO:
-				sliderMode = MOVE_TIMELAPSE;
-				timelapse.totalDistance = 0;
-				timelapse.totalDuration = 0;
-				timelapse.totalImages = 0;
-				indexModified = timelapseBodyFile;
-				break;
-				
-			case MOVE_TIMELAPSE:
-				sliderMode = MOVE_DISABLED;
-				indexModified = disabledBodyFile;
-				break;
-				
-			default:
-				break;
-			}
-			break;
-			
-		case ENDSTOP_STATE:
-			// toggle endstop state to next one in sequence
-			switch ( endstopAction ) {
-			case STOP_HERE:
-				endstopAction = REVERSE;
-				break;
-				
-			case REVERSE:
-				endstopAction = ONE_CYCLE;
-				break;
-				
-			case ONE_CYCLE:
-				endstopAction = STOP_HERE;
-				break;
-			
-			default:
-				break;
-			}
-			break;
-			
-		case SET_DIRECTION:
-			// toggle carriage direction
-			clockwise = !clockwise;
-			break;
-			
-		case START_STATE:
-			/*
-			  stop or initiatiate movement
-			  indicate errors to user if req data is missing
-			*/
-			if ( sliderMode == MOVE_VIDEO ) {
-				if ( running ) {
-					carriageState = CARRIAGE_STOP;								// state machine will clear running flag
-				} else {
-					bool conditionsSatisfied = true;
-					
-					if ( video.travelDistance <= 0 ) {
-							durationTextColor = String("red");
-							conditionsSatisfied = false;
-					}
-					if ( video.travelDuration <= 0 ) {
-							durationTextColor = String("red");
-							conditionsSatisfied = false;
-					}
-					
-					if ( conditionsSatisfied ) {
-						// travel position & speed set already at input time, so just set the flag for the FSM to start the move
-						newMove = true;
+      switch ( actionType ) {
+      /*
+       COMMON ACTIONS (implementation may be state-specific)
+      */
+      case SLIDER_STATE:
+          //toggles state to the next state in sequence
+         switch ( sliderMode ) {
+         case MOVE_DISABLED:
+            sliderMode = MOVE_VIDEO;
+            video.travelDistance = 0;
+            video.travelDuration = 0;
+            indexModified = videoBodyFile;
+            break;
+            
+         case MOVE_VIDEO:
+            sliderMode = MOVE_TIMELAPSE;
+            timelapse.totalDistance = 0;
+            timelapse.totalDuration = 0;
+            timelapse.totalImages = 0;
+            indexModified = timelapseBodyFile;
+            break;
+            
+         case MOVE_TIMELAPSE:
+            sliderMode = MOVE_DISABLED;
+            indexModified = disabledBodyFile;
+            break;
+            
+         default:
+            break;
+         }
+         break;
+         
+      case ENDSTOP_STATE:
+         // toggle endstop state to next one in sequence
+         switch ( endstopAction ) {
+         case STOP_HERE:
+            endstopAction = REVERSE;
+            break;
+            
+         case REVERSE:
+            endstopAction = ONE_CYCLE;
+            break;
+            
+         case ONE_CYCLE:
+            endstopAction = STOP_HERE;
+            break;
+         
+         default:
+            break;
+         }
+         break;
+         
+      case SET_DIRECTION:
+         // toggle carriage direction
+         clockwise = !clockwise;
+         break;
+         
+      case START_STATE:
+         /*
+           stop or initiatiate movement
+           indicate errors to user if req data is missing
+         */
+         if ( sliderMode == MOVE_VIDEO ) {
+            if ( running ) {
+               carriageState = CARRIAGE_STOP;								// state machine will clear running flag
+            } else {
+               bool conditionsSatisfied = true;
+               
+               if ( video.travelDistance <= 0 ) {
+                     durationTextColor = String("red");
+                     conditionsSatisfied = false;
+               }
+               if ( video.travelDuration <= 0 ) {
+                     durationTextColor = String("red");
+                     conditionsSatisfied = false;
+               }
+               
+               if ( conditionsSatisfied ) {
+                  // travel position & speed set already at input time, so just set the flag for the FSM to start the move
+                  newMove = true;
 #if DEBUG >= 2
-						Serial.println(String("Move to position: ") + String(targetPosition) + String(" at speed ") + String(targetSpeed));
+                  Serial.println(String("Move to position: ") + String(targetPosition) + String(" at speed ") + String(targetSpeed));
 #endif
-					} else {
-						targetSpeed = 0;
-					}
-				}
-			} else if ( sliderMode == MOVE_TIMELAPSE ) {
-				if ( timelapse.enabled ) {
-					timelapse.enabled = false;
-					carriageState = CARRIAGE_STOP;
-				} else {
-					bool conditionsSatisfied = true;
-					
-					if ( timelapse.totalDistance <= 0 ) {
-						totalDistanceTextColor = String("red");
-						conditionsSatisfied = false;
-					}
-					if ( timelapse.totalDuration <= 0 ) {
-						totalDurationTextColor = String("red");
-						conditionsSatisfied = false;
-					}
-					if ( timelapse.totalImages <= 0 ) {
-						totalImagesTextColor = String("red");
-						conditionsSatisfied = false;
-					}
+               } else {
+                  targetSpeed = 0;
+               }
+            }
+         } else if ( sliderMode == MOVE_TIMELAPSE ) {
+            if ( timelapse.enabled ) {
+               timelapse.enabled = false;
+               carriageState = CARRIAGE_STOP;
+            } else {
+               bool conditionsSatisfied = true;
+               
+               if ( timelapse.totalDistance <= 0 ) {
+                  totalDistanceTextColor = String("red");
+                  conditionsSatisfied = false;
+               }
+               if ( timelapse.totalDuration <= 0 ) {
+                  totalDurationTextColor = String("red");
+                  conditionsSatisfied = false;
+               }
+               if ( timelapse.totalImages <= 0 ) {
+                  totalImagesTextColor = String("red");
+                  conditionsSatisfied = false;
+               }
 
-					if ( conditionsSatisfied ) {
-						// sequence move plan params calculated when last user input was received
+               if ( conditionsSatisfied ) {
+                  // sequence move plan params calculated when last user input was received
 #if DEBUG >= 2
-						Serial.println(String("Timelapse seq: ") + String(timelapse.totalImages) + String (" images moving ") + String(timelapse.moveDistance) + 
-						  String (" in @ interval ") + String(timelapse.moveInterval));
+                  Serial.println(String("Timelapse seq: ") + String(timelapse.totalImages) + String (" images moving ") + String(timelapse.moveDistance) + 
+                    String (" in @ interval ") + String(timelapse.moveInterval));
 #endif
-						timelapse.imageCount = 0;
-						timelapse.state = S_SHUTTER;
-						timelapse.enabled = true;
-						timelapseMove();
-					}
-				}
-			}
-			break;
+                  timelapse.imageCount = 0;
+                  timelapse.state = S_SHUTTER;
+                  timelapse.enabled = true;
+                  timelapseMove();
+               }
+            }
+         }
+         break;
 
-		case HOME_CARRIAGE:
-			// save current stepper params to restore after move is complete
-			homeState.homing = true;
-			homeState.lastTargetPosition = targetPosition;
-			homeState.lastTargetSpeed = targetSpeed;
-			homeState.lastEndstopState = endstopAction;
-			
-			// return the carriage to the home position
-			targetPosition = (long)INCHES_TO_STEPS(MAX_TRAVEL_DISTANCE);
-			targetSpeed = HS24_MAX_SPEED;
-			endstopAction = STOP_HERE;
-			clockwise = false;							// towards the motor
-			newMove = true;
-			break;
-		
-			
-		/*
-		 VIDEO MODE
-		 in this mode, move parameters are built as the commands are entered, then we check before initiatiating a move in START_STATE
-		 calculate speed in each state so data can be entered in any order
-		 so we can display on the interface, calculate stepper params now and not in START_STATE
-		*/
-		case SET_DISTANCE:
-			// get distance to travel in inches
-			idx = url.lastIndexOf('=');
-			if ( idx ) {
-				String value = url.substring(idx+1);
-				
-				video.travelDistance = constrain(value.toInt(), 1, MAX_TRAVEL_DISTANCE);
-				targetPosition = (long)INCHES_TO_STEPS(video.travelDistance);
-				if ( video.travelDuration ) {
-					targetSpeed = constrain((float)(targetPosition / video.travelDuration), 1.0, HS24_MAX_SPEED);	// steps per second
-				} else {
-					targetSpeed = 0;
-				}
+      case HOME_CARRIAGE:
+         // save current stepper params to restore after move is complete
+         homeState.homing = true;
+         homeState.lastTargetPosition = targetPosition;
+         homeState.lastTargetSpeed = targetSpeed;
+         homeState.lastEndstopState = endstopAction;
+         
+         // return the carriage to the home position
+         targetPosition = (long)INCHES_TO_STEPS(MAX_TRAVEL_DISTANCE);
+         targetSpeed = HS24_MAX_SPEED;
+         endstopAction = STOP_HERE;
+         clockwise = false;							// towards the motor
+         newMove = true;
+         break;
+      
+         
+      /*
+       VIDEO MODE
+       in this mode, move parameters are built as the commands are entered, then we check before initiatiating a move in START_STATE
+       calculate speed in each state so data can be entered in any order
+       so we can display on the interface, calculate stepper params now and not in START_STATE
+      */
+      case SET_DISTANCE:
+         // get distance to travel in inches
+         idx = url.lastIndexOf('=');
+         if ( idx ) {
+            String value = url.substring(idx+1);
+            
+            video.travelDistance = constrain(value.toInt(), 1, MAX_TRAVEL_DISTANCE);
+            targetPosition = (long)INCHES_TO_STEPS(video.travelDistance);
+            if ( video.travelDuration ) {
+               targetSpeed = constrain((float)(targetPosition / video.travelDuration), 1.0, HS24_MAX_SPEED);	// steps per second
+            } else {
+               targetSpeed = 0;
+            }
 #if DEBUG >= 2
-				Serial.println(String("Travel distance: ") + String(video.travelDistance) + String(" inches "));
+            Serial.println(String("Travel distance: ") + String(video.travelDistance) + String(" inches "));
 #endif
-			}
-			break;
-			
-		case SET_DURATION:
-			//get travel duration
-			idx = url.lastIndexOf('=');
-			if ( idx ) {
-				String value = url.substring(idx+1);
-				
-				video.travelDuration = constrain(value.toInt(), 1, MAX_TRAVEL_TIME);
-				if ( targetPosition > 0 ) {
-					targetSpeed = constrain((float)(targetPosition / video.travelDuration), 1.0, HS24_MAX_SPEED);	// steps per second
-				} else {
-					targetSpeed = 0;
-				}
+         }
+         break;
+         
+      case SET_DURATION:
+         //get travel duration
+         idx = url.lastIndexOf('=');
+         if ( idx ) {
+            String value = url.substring(idx+1);
+            
+            video.travelDuration = constrain(value.toInt(), 1, MAX_TRAVEL_TIME);
+            if ( targetPosition > 0 ) {
+               targetSpeed = constrain((float)(targetPosition / video.travelDuration), 1.0, HS24_MAX_SPEED);	// steps per second
+            } else {
+               targetSpeed = 0;
+            }
 #if DEBUG >= 2
-				Serial.println(String("Travel Duration: ") + String(video.travelDuration) + String(" sec "));
+            Serial.println(String("Travel Duration: ") + String(video.travelDuration) + String(" sec "));
 #endif
-			}
-			break;
-		
-		/*
-		 TIMELAPSE MODE
-		 in this mode, individual moves are planned in timelapseMove(), not here, so just get the data we need
-		*/
-		case SET_TL_DISTANCE:
-			// distance to move in total
-			idx = url.lastIndexOf('=');
-			if ( idx ) {
-				String value = url.substring(idx+1);
-				
-				timelapse.totalDistance = constrain(value.toInt(), 1, MAX_TRAVEL_DISTANCE);
+         }
+         break;
+      
+      /*
+       TIMELAPSE MODE
+       in this mode, individual moves are planned in timelapseMove(), not here, so just get the data we need
+      */
+      case SET_TL_DISTANCE:
+         // distance to move in total
+         idx = url.lastIndexOf('=');
+         if ( idx ) {
+            String value = url.substring(idx+1);
+            
+            timelapse.totalDistance = constrain(value.toInt(), 1, MAX_TRAVEL_DISTANCE);
 #if DEBUG >= 2
-				Serial.println(String("Total dist: ") + String(timelapse.totalDistance) + String(" inches "));
+            Serial.println(String("Total dist: ") + String(timelapse.totalDistance) + String(" inches "));
 #endif
-				timelapseParamsChanged = true;						// enable parameter checking below
-			}
-			break;
-			
-		case SET_TL_DURATION:
-			// total elapsed timrelapse seq time
-			idx = url.lastIndexOf('=');
-			if ( idx ) {
-				String value = url.substring(idx+1);
-				
-				// carriage needs time to stabalize after a move, so min time is 1 + this delay
-				timelapse.totalDuration = constrain(value.toInt(), CARR_SETTLE_SEC, MAX_TRAVEL_TIME);
+            timelapseParamsChanged = true;						// enable parameter checking below
+         }
+         break;
+         
+      case SET_TL_DURATION:
+         // total elapsed timrelapse seq time
+         idx = url.lastIndexOf('=');
+         if ( idx ) {
+            String value = url.substring(idx+1);
+            
+            // carriage needs time to stabalize after a move, so min time is 1 + this delay
+            timelapse.totalDuration = constrain(value.toInt(), CARR_SETTLE_SEC, MAX_TRAVEL_TIME);
 #if DEBUG >= 2
-				Serial.println(String("Total duration: ") + String(timelapse.totalDuration) + String(" sec "));
+            Serial.println(String("Total duration: ") + String(timelapse.totalDuration) + String(" sec "));
 #endif
-				timelapseParamsChanged = true;
-			}
-			break;
-			
-		case SET_TL_IMAGES:
-			// number of total images to capture
-			idx = url.lastIndexOf('=');
-			if ( idx ) {
-				String value = url.substring(idx+1);
-				
-				timelapse.totalImages = constrain(value.toInt(), 2, MAX_IMAGES);
+            timelapseParamsChanged = true;
+         }
+         break;
+         
+      case SET_TL_IMAGES:
+         // number of total images to capture
+         idx = url.lastIndexOf('=');
+         if ( idx ) {
+            String value = url.substring(idx+1);
+            
+            timelapse.totalImages = constrain(value.toInt(), 2, MAX_IMAGES);
 #if DEBUG >= 2
-				Serial.println(String("Total images: ") + String(timelapse.totalImages));
+            Serial.println(String("Total images: ") + String(timelapse.totalImages));
 #endif
-				timelapseParamsChanged = true;
-			}
-			break;
+            timelapseParamsChanged = true;
+         }
+         break;
 
       case FORGET:
          clearCredentials();
          break;
-			
-		case NULL_ACTION:
-		default:
-			break;
-		}
-		
-		/*
-		 substitute current data variables for the placeholders in the base HTML file
-		 
-		 COMMON
-		*/
-		switch ( sliderMode ) {
-		case MOVE_DISABLED:
-			indexModified.replace(String(STATE_VAR), String("Disabled"));
-			break;
-			
-		case MOVE_VIDEO:
-			indexModified.replace(String(STATE_VAR), String("Video"));
-			break;
-			
-		case MOVE_TIMELAPSE:
-			indexModified.replace(String(STATE_VAR), String("Timelapse"));
-			break;
-			
-		default:
-			break;
-		}
+         
+      case NULL_ACTION:
+      default:
+         break;
+      }
+      
+      /*
+       substitute current data variables for the placeholders in the base HTML file
+       
+       COMMON
+      */
+      switch ( sliderMode ) {
+      case MOVE_DISABLED:
+         indexModified.replace(String(STATE_VAR), String("Disabled"));
+         break;
+         
+      case MOVE_VIDEO:
+         indexModified.replace(String(STATE_VAR), String("Video"));
+         break;
+         
+      case MOVE_TIMELAPSE:
+         indexModified.replace(String(STATE_VAR), String("Timelapse"));
+         break;
+         
+      default:
+         break;
+      }
 
-		switch ( endstopAction ) {
-		case STOP_HERE:
-			indexModified.replace(String(ENDSTOP_VAR), String("Stop"));
-			indexModified.replace(String(ENDSTOP_CSS), String(CSS_RED));
-			break;
-			
-		case REVERSE:
-			indexModified.replace(String(ENDSTOP_VAR), String("Reverse"));
-			indexModified.replace(String(ENDSTOP_CSS), String(CSS_PURPLE));
-			break;
-			
-		case ONE_CYCLE:
-			indexModified.replace(String(ENDSTOP_VAR), String("One Cycle"));
-			indexModified.replace(String(ENDSTOP_CSS), String(CSS_BLUE));
-			break;
-			
-		default:
-			break;
-		}
-		
-		indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Away") : String("Towards"));
-		
-		// common colors
-		if ( clockwise ) {
-			indexModified.replace(String(DIRECTION_CSS), String(CSS_BLUE));
-		} else {
-			indexModified.replace(String(DIRECTION_CSS), String(CSS_ORANGE));
-		}
+      switch ( endstopAction ) {
+      case STOP_HERE:
+         indexModified.replace(String(ENDSTOP_VAR), String("Stop"));
+         indexModified.replace(String(ENDSTOP_CSS), String(CSS_RED));
+         break;
+         
+      case REVERSE:
+         indexModified.replace(String(ENDSTOP_VAR), String("Reverse"));
+         indexModified.replace(String(ENDSTOP_CSS), String(CSS_PURPLE));
+         break;
+         
+      case ONE_CYCLE:
+         indexModified.replace(String(ENDSTOP_VAR), String("One Cycle"));
+         indexModified.replace(String(ENDSTOP_CSS), String(CSS_BLUE));
+         break;
+         
+      default:
+         break;
+      }
+      
+      indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Away") : String("Towards"));
+      
+      // common colors
+      if ( clockwise ) {
+         indexModified.replace(String(DIRECTION_CSS), String(CSS_BLUE));
+      } else {
+         indexModified.replace(String(DIRECTION_CSS), String(CSS_ORANGE));
+      }
 
-		// mode-specific
-		if ( sliderMode == MOVE_VIDEO ) {
-			// variables
-			indexModified.replace(String(DISTANCE_VAR), String(video.travelDistance));
-			indexModified.replace(String(DURATION_VAR), String(video.travelDuration));
-			indexModified.replace(String(SPEED_VAR), String((float)(STEPS_TO_INCHES(targetSpeed)), 2));
-			indexModified.replace(String(START_VAR), running ? String("Running") : String("Standby"));
-			
-			// CSS colors
-			indexModified.replace(String(MODE_CSS), String(CSS_CYAN));
-			indexModified.replace(String(DISTANCE_CSS), distanceTextColor);
-			indexModified.replace(String(DURATION_CSS), durationTextColor);
-			indexModified.replace(String(START_CSS), running ? String(CSS_GREEN) : String(CSS_RED));
-			
-			// status section - stepsTaken will either have the running running total or the total from the last run (or 0 if never run, of course)
-			indexModified.replace(String(TRAVELED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)), 2));
-			if ( running ) {
-				// currently running
-				float t_duration = (float)((millis() - travelStart)/1000.0);
-				indexModified.replace(String(ELAPSED_VAR), String(t_duration, 2));
-				indexModified.replace(String(MEASURED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)/t_duration), 2));
-			} else if ( lastRunDuration ) {
-				// previous run
-				float t_duration = (float)(lastRunDuration/1000.0);
-				indexModified.replace(String(ELAPSED_VAR), String(t_duration, 2));
-				indexModified.replace(String(MEASURED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)/t_duration), 2));
-			} else {
-				indexModified.replace(String(ELAPSED_VAR), String(" "));
-				indexModified.replace(String(MEASURED_VAR), String(" "));
-			}
-		} else if ( sliderMode == MOVE_TIMELAPSE ) {
-			if ( timelapseParamsChanged && ((timelapse.totalDistance > 0) && (timelapse.totalDuration > 0) && (timelapse.totalImages > 0)) ) {
-				// pre-calculate & validate the sequence parameters for user display in status: the number of moves (images) and delay between images (moves)
-				timelapse.moveDistance = (int)floor(timelapse.totalDistance / (timelapse.totalImages - 1));
-				if ( timelapse.moveDistance <= 0 ) {
-					// must actually move the stepper for the state machine to function
-					timelapse.moveDistance = 1;
-					timelapse.totalDistance = timelapse.totalImages - 1;
-					totalDistanceTextColor = String("yellow");
-				}
-				
-				timelapse.moveInterval = (int)floor(timelapse.totalDuration / (timelapse.totalImages - 1));		
-				int minDelay = (int)ceil(INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED);			// inches per step / steps per second = seconds
-				minDelay += CARR_SETTLE_SEC;
-				if ( timelapse.moveInterval < minDelay ) {
-					// minimum interval is the carriage move time + stabilization delay
-					timelapse.moveInterval = minDelay;
-					timelapse.totalDuration = timelapse.moveInterval * (timelapse.totalImages - 1);
-					totalDurationTextColor = String("yellow");
-				}
-				timelapse.imageCount = 0;	
+      // mode-specific
+      if ( sliderMode == MOVE_VIDEO ) {
+         // variables
+         indexModified.replace(String(DISTANCE_VAR), String(video.travelDistance));
+         indexModified.replace(String(DURATION_VAR), String(video.travelDuration));
+         indexModified.replace(String(SPEED_VAR), String((float)(STEPS_TO_INCHES(targetSpeed)), 2));
+         indexModified.replace(String(START_VAR), running ? String("Running") : String("Standby"));
+         
+         // CSS colors
+         indexModified.replace(String(MODE_CSS), String(CSS_CYAN));
+         indexModified.replace(String(DISTANCE_CSS), distanceTextColor);
+         indexModified.replace(String(DURATION_CSS), durationTextColor);
+         indexModified.replace(String(START_CSS), running ? String(CSS_GREEN) : String(CSS_RED));
+         
+         // status section - stepsTaken will either have the running running total or the total from the last run (or 0 if never run, of course)
+         indexModified.replace(String(TRAVELED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)), 2));
+         if ( running ) {
+            // currently running
+            float t_duration = (float)((millis() - travelStart)/1000.0);
+            indexModified.replace(String(ELAPSED_VAR), String(t_duration, 2));
+            indexModified.replace(String(MEASURED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)/t_duration), 2));
+         } else if ( lastRunDuration ) {
+            // previous run
+            float t_duration = (float)(lastRunDuration/1000.0);
+            indexModified.replace(String(ELAPSED_VAR), String(t_duration, 2));
+            indexModified.replace(String(MEASURED_VAR), String((float)(STEPS_TO_INCHES(stepsTaken)/t_duration), 2));
+         } else {
+            indexModified.replace(String(ELAPSED_VAR), String(" "));
+            indexModified.replace(String(MEASURED_VAR), String(" "));
+         }
+      } else if ( sliderMode == MOVE_TIMELAPSE ) {
+         if ( timelapseParamsChanged && ((timelapse.totalDistance > 0) && (timelapse.totalDuration > 0) && (timelapse.totalImages > 0)) ) {
+            // pre-calculate & validate the sequence parameters for user display in status: the number of moves (images) and delay between images (moves)
+            timelapse.moveDistance = (int)floor(timelapse.totalDistance / (timelapse.totalImages - 1));
+            if ( timelapse.moveDistance <= 0 ) {
+               // must actually move the stepper for the state machine to function
+               timelapse.moveDistance = 1;
+               timelapse.totalDistance = timelapse.totalImages - 1;
+               totalDistanceTextColor = String("yellow");
+            }
+            
+            timelapse.moveInterval = (int)floor(timelapse.totalDuration / (timelapse.totalImages - 1));		
+            int minDelay = (int)ceil(INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED);			// inches per step / steps per second = seconds
+            minDelay += CARR_SETTLE_SEC;
+            if ( timelapse.moveInterval < minDelay ) {
+               // minimum interval is the carriage move time + stabilization delay
+               timelapse.moveInterval = minDelay;
+               timelapse.totalDuration = timelapse.moveInterval * (timelapse.totalImages - 1);
+               totalDurationTextColor = String("yellow");
+            }
+            timelapse.imageCount = 0;	
 #if DEBUG >= 2
-				Serial.println(String("Timelapse seq: ") + String(timelapse.totalImages) + String (" images moving ") + String(timelapse.moveDistance) + 
-				  String (" in @ interval ") + String(timelapse.moveInterval));
+            Serial.println(String("Timelapse seq: ") + String(timelapse.totalImages) + String (" images moving ") + String(timelapse.moveDistance) + 
+              String (" in @ interval ") + String(timelapse.moveInterval));
 #endif				
-			}
-			
-			// variables
-			indexModified.replace(String(TL_DISTANCE_VAR), String(timelapse.totalDistance));
-			indexModified.replace(String(TL_DURATION_VAR), String(timelapse.totalDuration));
-			indexModified.replace(String(TL_IMAGES_VAR), String(timelapse.totalImages));
-			indexModified.replace(String(START_VAR), timelapse.enabled ? String("Running") : String("Standby"));
-			// colors
-			indexModified.replace(String(MODE_CSS), String(CSS_MAGENTA));
-			indexModified.replace(String(TL_DISTANCE_CSS), totalDistanceTextColor);
-			indexModified.replace(String(TL_DURATION_CSS), totalDurationTextColor);
-			indexModified.replace(String(TL_IMAGES_CSS), totalImagesTextColor);
-			indexModified.replace(String(START_CSS), timelapse.enabled ? String(CSS_GREEN) : String(CSS_RED));
-			
-			// status
-			indexModified.replace(String(TL_MOVEDIST), String(timelapse.moveDistance));
-			indexModified.replace(String(TL_INTERVAL), String(timelapse.moveInterval));
-			indexModified.replace(String(TL_COUNT), String(timelapse.imageCount));
-		} else {
-			// disabled
-			indexModified.replace(String(MODE_CSS), String(CSS_RED));
-		}
-		
+         }
+         
+         // variables
+         indexModified.replace(String(TL_DISTANCE_VAR), String(timelapse.totalDistance));
+         indexModified.replace(String(TL_DURATION_VAR), String(timelapse.totalDuration));
+         indexModified.replace(String(TL_IMAGES_VAR), String(timelapse.totalImages));
+         indexModified.replace(String(START_VAR), timelapse.enabled ? String("Running") : String("Standby"));
+         // colors
+         indexModified.replace(String(MODE_CSS), String(CSS_MAGENTA));
+         indexModified.replace(String(TL_DISTANCE_CSS), totalDistanceTextColor);
+         indexModified.replace(String(TL_DURATION_CSS), totalDurationTextColor);
+         indexModified.replace(String(TL_IMAGES_CSS), totalImagesTextColor);
+         indexModified.replace(String(START_CSS), timelapse.enabled ? String(CSS_GREEN) : String(CSS_RED));
+         
+         // status
+         indexModified.replace(String(TL_MOVEDIST), String(timelapse.moveDistance));
+         indexModified.replace(String(TL_INTERVAL), String(timelapse.moveInterval));
+         indexModified.replace(String(TL_COUNT), String(timelapse.imageCount));
+      } else {
+         // disabled
+         indexModified.replace(String(MODE_CSS), String(CSS_RED));
+      }
+      
 
 #if DEBUG >= 3
-		Serial.println("\n**INDEX FILE MODIFIED**");
-		Serial.print(indexModified);
+      Serial.println("\n**INDEX FILE MODIFIED**");
+      Serial.print(indexModified);
 #endif
-		// finally, send to the client
-		sendHTML(200, "text/html", indexModified);
-	}
+      // finally, send to the client
+      sendHTML(200, "text/html", indexModified);
+   }
 }
 
 /*
   main WiFi service routine
 */
 void WiFiService ( void ) {
-	bool responseSent = false;
-	
-	client = server.available();
-	if ( client && client.connected() ) {
-		INFO(F("Client connected. Connected flag"), userConnected);
+   bool responseSent = false;
+   
+   client = server.available();
+   if ( client && client.connected() ) {
+      INFO(F("Client connected. Connected flag"), userConnected);
       /*
        If this is the first time we are connected, disable AP mode broadcast of the IP address
        and enable OTA mode
@@ -956,24 +957,24 @@ void WiFiService ( void ) {
          sliderMode = MOVE_TIMELAPSE;                       // set initial default so LED status light will change
          return;
       }
-		// retrieve the URI request from the client stream
-		String uri = client.readStringUntil('\r');
-		INFO(F("Client URI"), uri);
-		client.flush();
-		
-		// scan the action table to get the action and send appropriate response
-		for ( uint8_t i = 0; i < ACTION_TABLE_SIZE; i++ ) {
-			if ( uri.indexOf(actionTable[i].action) != -1 ) {
-				// done once we found the first match (this is why null actions are the the bottom of the table)
-				sendResponse(actionTable[i].type, uri);
-				responseSent = true;
-				break;
-			}
-		}
-		if ( !responseSent ) {
-			// keep the connection alive
-			sendResponse(NULL_ACTION, uri);
-		}
-		client.stop();
-	}
+      // retrieve the URI request from the client stream
+      String uri = client.readStringUntil('\r');
+      INFO(F("Client URI"), uri);
+      client.flush();
+      
+      // scan the action table to get the action and send appropriate response
+      for ( uint8_t i = 0; i < ACTION_TABLE_SIZE; i++ ) {
+         if ( uri.indexOf(actionTable[i].action) != -1 ) {
+            // done once we found the first match (this is why null actions are the the bottom of the table)
+            sendResponse(actionTable[i].type, uri);
+            responseSent = true;
+            break;
+         }
+      }
+      if ( !responseSent ) {
+         // keep the connection alive
+         sendResponse(NULL_ACTION, uri);
+      }
+      client.stop();
+   }
 }

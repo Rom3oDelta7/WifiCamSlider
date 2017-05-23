@@ -1,14 +1,14 @@
 /*
    TABS=3
-	WiFi Camera Slider Controller
+   WiFi Camera Slider Controller
    https://github.com/Rom3oDelta7/WifiCamSlider
 
-	Controls the stepper motor on the slider utilizing an HTTP server (AP or STA mode) to enable WiFi control from any browser with or without without a WiFI network host.
-	This version supports an A4988 (chopper) controller using a WeMos D1 Mini ESP8266 (ESP-12F) devboard.
-	
-	
-	Prior to running this sketch, the HTML file must be loaded into the ESP8266 SPIFFS file system.
-	Currently, the instructions for installing and running the uplaod tool can be found here: http://esp8266.github.io/Arduino/versions/2.3.0/doc/filesystem.html
+   Controls the stepper motor on the slider utilizing an HTTP server (AP or STA mode) to enable WiFi control from any browser with or without without a WiFI network host.
+   This version supports an A4988 (chopper) controller using a WeMos D1 Mini ESP8266 (ESP-12F) devboard.
+   
+   
+   Prior to running this sketch, the HTML file must be loaded into the ESP8266 SPIFFS file system.
+   Currently, the instructions for installing and running the uplaod tool can be found here: http://esp8266.github.io/Arduino/versions/2.3.0/doc/filesystem.html
 
    Copyright 2016 Rob Redford
    This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
@@ -48,12 +48,12 @@
 
 This code was written for an OSM 17HS24-0644S stepper motor
  References:
-	http://www.omc-stepperonline.com/nema-17-60ncm85ozin-064a-bipolar-stepper-motor-17hs240644s-p-19.html (product page)
-	http://www.omc-stepperonline.com/download/pdf/17HS24-0644S.pdf (datasheet [partially in Chinese])
-	http://www.osmtec.com/stepper_motors.htm (OSM stepper motor catalog)
-	
+   http://www.omc-stepperonline.com/nema-17-60ncm85ozin-064a-bipolar-stepper-motor-17hs240644s-p-19.html (product page)
+   http://www.omc-stepperonline.com/download/pdf/17HS24-0644S.pdf (datasheet [partially in Chinese])
+   http://www.osmtec.com/stepper_motors.htm (OSM stepper motor catalog)
+   
 Allegro A4988 motor controller
-	http://www.electrodragon.com/w/Stepstick_Stepper_Driver_Board_A4988_V2
+   http://www.electrodragon.com/w/Stepstick_Stepper_Driver_Board_A4988_V2
 */
 
 // ================================= stepper ==============================================
@@ -157,45 +157,45 @@ void fatalError ( const LEDColor color ) {
 */
 void endOfTravel ( void ) {
    led.setState(LEDState::OFF);                       // (briefly) turn off move indicator
-	if ( plannedMoveEnd ) {
-		// all planned moves stop the carriage
-		INFO(F("**** MOVE END ****"), "");
-		carriageState = CARRIAGE_STOP;
-		plannedMoveEnd = false;
-	} else if ( !debounce ) {
-		INFO(F("**** ENDSTOP HIT ****"), "");
+   if ( plannedMoveEnd ) {
+      // all planned moves stop the carriage
+      INFO(F("**** MOVE END ****"), "");
+      carriageState = CARRIAGE_STOP;
+      plannedMoveEnd = false;
+   } else if ( !debounce ) {
+      INFO(F("**** ENDSTOP HIT ****"), "");
 
-		// limit switch triggered
-		switch ( endstopAction ) {
-		case STOP_HERE:
-			carriageState = CARRIAGE_STOP;
-			clockwise = !clockwise;
-			break;
-			
-		case REVERSE:
-			// reverse without stopping
-			// ZZZ - better to continue with the current move rather than initiatiating a new one ??? ZZZ
-			carriageState = CARRIAGE_TRAVEL_REVERSE;
-			clockwise = !clockwise;
-			newMove = true;										// execute the same move parameters in the opposite direction
-			break;
-			
-		case ONE_CYCLE:
-			// return once, no stopping
-			carriageState = CARRIAGE_TRAVEL_REVERSE;
-			endstopAction = STOP_HERE;							// stop next time
-			clockwise = !clockwise;
-			newMove = true;
-			break;
-		
-		default:
-			break;
-		}
-		
-		// set up debounce window (see loop())
-		debounce = true;
-		debounceStart = currentTime;			
-	}
+      // limit switch triggered
+      switch ( endstopAction ) {
+      case STOP_HERE:
+         carriageState = CARRIAGE_STOP;
+         clockwise = !clockwise;
+         break;
+         
+      case REVERSE:
+         // reverse without stopping
+         // ZZZ - better to continue with the current move rather than initiatiating a new one ??? ZZZ
+         carriageState = CARRIAGE_TRAVEL_REVERSE;
+         clockwise = !clockwise;
+         newMove = true;										// execute the same move parameters in the opposite direction
+         break;
+         
+      case ONE_CYCLE:
+         // return once, no stopping
+         carriageState = CARRIAGE_TRAVEL_REVERSE;
+         endstopAction = STOP_HERE;							// stop next time
+         clockwise = !clockwise;
+         newMove = true;
+         break;
+      
+      default:
+         break;
+      }
+      
+      // set up debounce window (see loop())
+      debounce = true;
+      debounceStart = currentTime;			
+   }
 }
 
 /*
@@ -203,107 +203,107 @@ void endOfTravel ( void ) {
 */
 void setup ( void ) {
 #if DEBUG > 0
-	Serial.begin(115200);
-	INFO(F("Initializing ..."), ".");
+   Serial.begin(115200);
+   INFO(F("Initializing ..."), ".");
 #endif
-	
-	// housekeeping
-	led.setColor(LEDColor::WHITE);                    // white => initialization
+   
+   // housekeeping
+   led.setColor(LEDColor::WHITE);                    // white => initialization
    led.setState(LEDState::ON);
    EEPROM.begin(EEPROMSIZE);                         // for shadow copy of WiFi credentials
 
-	pinMode(STEP, OUTPUT);
-	pinMode(DIR, OUTPUT);
-	pinMode(ENABLE, OUTPUT);
-	pinMode(LIMIT_MOTOR, INPUT);								// WeMos module pullup resistor on both pins
-	pinMode(LIMIT_END, INPUT);
-	pinMode(CAM_TRIGGER, OUTPUT);								// WeMos pulldown on this pin
-	digitalWrite(CAM_TRIGGER, LOW);
-	
-	stepper.setEnablePin(ENABLE);								// set LOW to standby - internal pulldown in TB6612FNG
-	stepper.setPinsInverted(false, false, true);			// inverted ENABLE pin on Allegro A4988
-	
-	stepper.setMaxSpeed(HS24_MAX_SPEED);					// max steps/sec 
-	stepper.disableOutputs();									// don't energize the motors or enable controller until user initiates movement
-	
-	attachInterrupt(digitalPinToInterrupt(LIMIT_MOTOR), endOfTravel, FALLING);
-	attachInterrupt(digitalPinToInterrupt(LIMIT_END), endOfTravel, FALLING);
-	
-	setupWiFi();
+   pinMode(STEP, OUTPUT);
+   pinMode(DIR, OUTPUT);
+   pinMode(ENABLE, OUTPUT);
+   pinMode(LIMIT_MOTOR, INPUT);								// WeMos module pullup resistor on both pins
+   pinMode(LIMIT_END, INPUT);
+   pinMode(CAM_TRIGGER, OUTPUT);								// WeMos pulldown on this pin
+   digitalWrite(CAM_TRIGGER, LOW);
+   
+   stepper.setEnablePin(ENABLE);								// set LOW to standby - internal pulldown in TB6612FNG
+   stepper.setPinsInverted(false, false, true);			// inverted ENABLE pin on Allegro A4988
+   
+   stepper.setMaxSpeed(HS24_MAX_SPEED);					// max steps/sec 
+   stepper.disableOutputs();									// don't energize the motors or enable controller until user initiates movement
+   
+   attachInterrupt(digitalPinToInterrupt(LIMIT_MOTOR), endOfTravel, FALLING);
+   attachInterrupt(digitalPinToInterrupt(LIMIT_END), endOfTravel, FALLING);
+   
+   setupWiFi();
 
-	// close the debounce window to stabilize initialization
-	debounce = true;
-	debounceStart = millis();
+   // close the debounce window to stabilize initialization
+   debounce = true;
+   debounceStart = millis();
 }
 
 /*
  fire the camera shutter
 */
 void triggerShutter ( void ) {
-	led.setColor(LEDColor::BLUE);								// color will be reset when move starts
+   led.setColor(LEDColor::BLUE);								// color will be reset when move starts
    led.setState(LEDState::ON);
-	digitalWrite(CAM_TRIGGER, HIGH);
-	delay(CAM_TRIGGER_DURATION);						
-	digitalWrite(CAM_TRIGGER, LOW);
+   digitalWrite(CAM_TRIGGER, HIGH);
+   delay(CAM_TRIGGER_DURATION);						
+   digitalWrite(CAM_TRIGGER, LOW);
 }
 
 /*
  small FSM for implementing a set of moves for timelapse photography
  sequence is:
     trigger the shutter
-	 pre-move delay
-	 initiate move
-		CARIAGE_STOP state in loop calls this fcn again at end of move seq
-	 set timeout for remaining (post-move) delay (must be > minimum for carriage settling time)
-	 loop
+    pre-move delay
+    initiate move
+      CARIAGE_STOP state in loop calls this fcn again at end of move seq
+    set timeout for remaining (post-move) delay (must be > minimum for carriage settling time)
+    loop
  
  not a real interrupt, so no need for volatile variables
  move parameters have already been verified
  
 */
 void timelapseMove ( void ) {
-	
-	if ( timelapse.enabled && (timelapse.imageCount < timelapse.totalImages) ) {
-		switch ( timelapse.state ) {
-		case S_SHUTTER:
-			// fire the shutter then initiate first delay
-			triggerShutter();
-			
-			if ( ++timelapse.imageCount < timelapse.totalImages ) {
-				int moveTime = (int)floor((INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED) * 1000.0);
-				int timerDelay = ((timelapse.moveInterval * 1000) - moveTime) / 2;
-				timelapse.state = S_MOVE;
-				timelapse.moveStartTime = millis();
-				timer.setTimeout(timerDelay < 0 ? 0 : timerDelay, timelapseMove);
-			} else {
-				// final shutter trigger is the end of timelapse sequence
-				timelapse.enabled = false;
-			}
-			break;
-			
-		case S_MOVE:
-			// move the carriage - motion FSM will return to this fcn
-			targetPosition = (long)INCHES_TO_STEPS(timelapse.moveDistance);
-			targetSpeed = HS24_MAX_SPEED;
-			timelapse.state = S_DELAY;
-			newMove = true;
-			break;
-			
-		case S_DELAY:
-			// move complete; calculate & schedule the delay timeout for remainaing time
-			int timerDelay = (timelapse.moveInterval * 1000) - (millis() - timelapse.moveStartTime);
-			if (timerDelay < CARR_SETTLE_MSEC ) {
-				timerDelay = CARR_SETTLE_MSEC;
-			}
+   
+   if ( timelapse.enabled && (timelapse.imageCount < timelapse.totalImages) ) {
+      switch ( timelapse.state ) {
+      case S_SHUTTER:
+         // fire the shutter then initiate first delay
+         triggerShutter();
+         
+         if ( ++timelapse.imageCount < timelapse.totalImages ) {
+            int moveTime = (int)floor((INCHES_TO_STEPS(timelapse.moveDistance) / HS24_MAX_SPEED) * 1000.0);
+            int timerDelay = ((timelapse.moveInterval * 1000) - moveTime) / 2;
+            timelapse.state = S_MOVE;
+            timelapse.moveStartTime = millis();
+            timer.setTimeout(timerDelay < 0 ? 0 : timerDelay, timelapseMove);
+         } else {
+            // final shutter trigger is the end of timelapse sequence
+            timelapse.enabled = false;
+         }
+         break;
+         
+      case S_MOVE:
+         // move the carriage - motion FSM will return to this fcn
+         targetPosition = (long)INCHES_TO_STEPS(timelapse.moveDistance);
+         targetSpeed = HS24_MAX_SPEED;
+         timelapse.state = S_DELAY;
+         newMove = true;
+         break;
+         
+      case S_DELAY:
+         // move complete; calculate & schedule the delay timeout for remainaing time
+         int timerDelay = (timelapse.moveInterval * 1000) - (millis() - timelapse.moveStartTime);
+         if (timerDelay < CARR_SETTLE_MSEC ) {
+            timerDelay = CARR_SETTLE_MSEC;
+         }
 #if DEBUG >= 2
-			Serial.println(String("Next timer call: ") + String(timerDelay));
+         Serial.println(String("Next timer call: ") + String(timerDelay));
 #endif
-			timer.setTimeout(timerDelay, timelapseMove);
-			timelapse.state = S_SHUTTER;
-			break;
-			
-		}
-	}
+         timer.setTimeout(timerDelay, timelapseMove);
+         timelapse.state = S_SHUTTER;
+         break;
+         
+      }
+   }
 }
 
 /*
@@ -312,174 +312,174 @@ void timelapseMove ( void ) {
 void loop ( void ) {
    static LEDColor lastColor = LEDColor::NONE;
 
-	yield();
-	WiFiService();
+   yield();
+   WiFiService();
 
 #if DEBUG >= 3
-	// manual inputs for debugging - note that motor speed will be significantly slower if debug statements are being output
-	static bool askForInput = true;
-	
-	if ( askForInput ) {
-		Serial.print("*** INPUT DISTANCE IN INCHES and ELAPSED TIME: ");
-		askForInput = false;
-	}
-	if ( Serial.available() ) {
-		int inches, elapsed;
-		
-		inches = Serial.parseInt();
-		elapsed = Serial.parseInt();
+   // manual inputs for debugging - note that motor speed will be significantly slower if debug statements are being output
+   static bool askForInput = true;
+   
+   if ( askForInput ) {
+      Serial.print("*** INPUT DISTANCE IN INCHES and ELAPSED TIME: ");
+      askForInput = false;
+   }
+   if ( Serial.available() ) {
+      int inches, elapsed;
+      
+      inches = Serial.parseInt();
+      elapsed = Serial.parseInt();
 
-		if ( (inches > 0) && (elapsed > 0) ) {
-			targetPosition = (long)INCHES_TO_STEPS(inches);
-			targetSpeed = (float)(targetPosition / elapsed);							// steps per second
-			newMove = true;
-			askForInput = true;
-			Serial.println(String("Target Position: ") + String(targetPosition) + String(" steps at ") + String(targetSpeed) + String(" steps/sec"));
-		}
-		Serial.flush();
-	}
+      if ( (inches > 0) && (elapsed > 0) ) {
+         targetPosition = (long)INCHES_TO_STEPS(inches);
+         targetSpeed = (float)(targetPosition / elapsed);							// steps per second
+         newMove = true;
+         askForInput = true;
+         Serial.println(String("Target Position: ") + String(targetPosition) + String(" steps at ") + String(targetSpeed) + String(" steps/sec"));
+      }
+      Serial.flush();
+   }
 #endif
 
 #if DEBUG >= 3
-	static int counter = 0;
-	if ( counter++ > 500 ) {
-		Serial.println(String("Remaining steps: ") + String(stepper.distanceToGo()) + String(" carriage state: ") + String(carriageState));
-		Serial.println(String("\tPOSITIONS: current: ") + String(stepper.currentPosition()) + String(" target: ") + String(stepper.targetPosition()));
-		counter = 0;
-	}
+   static int counter = 0;
+   if ( counter++ > 500 ) {
+      Serial.println(String("Remaining steps: ") + String(stepper.distanceToGo()) + String(" carriage state: ") + String(carriageState));
+      Serial.println(String("\tPOSITIONS: current: ") + String(stepper.currentPosition()) + String(" target: ") + String(stepper.targetPosition()));
+      counter = 0;
+   }
 #endif
-	/*
-	  motion state machine - move flag always set OUTSIDE of this FSM
-	  NOTE: becuase of the WiFi interface, it is essential to use the non-blocking stepper library calls for movement
-	*/
-	switch ( carriageState ) {
-	case CARRIAGE_TRAVEL:
-		/*
-		 when moving CCW, the position will increment negatively from 0 (CW = positive)
-		 however, distanceToGo in CCW rotation will start at target and INCREASE (in the negative direction)
-		 ==> we need to check the absolute value of position rather than relying on distanceToGo() which
-		 always increases regardless of direction (since it is subtracting a negative number in CCW rotation)
-		*/
-		if ( abs(stepper.currentPosition()) < targetPosition ) {
-			// constant speed - no acceleration
-			if ( stepper.runSpeed() ) {
-				++stepsTaken;
-			}								
-		} else if ( stepsTaken == targetPosition ) {
-			// target reached without hitting the endstop, so simulate it to initiate next step (if any)
-			plannedMoveEnd = true;					// set when we did NOT hit the limit switch to get here
-			endOfTravel();
-		}
-		break;
-		
-	case CARRIAGE_STOP:
+   /*
+     motion state machine - move flag always set OUTSIDE of this FSM
+     NOTE: becuase of the WiFi interface, it is essential to use the non-blocking stepper library calls for movement
+   */
+   switch ( carriageState ) {
+   case CARRIAGE_TRAVEL:
+      /*
+       when moving CCW, the position will increment negatively from 0 (CW = positive)
+       however, distanceToGo in CCW rotation will start at target and INCREASE (in the negative direction)
+       ==> we need to check the absolute value of position rather than relying on distanceToGo() which
+       always increases regardless of direction (since it is subtracting a negative number in CCW rotation)
+      */
+      if ( abs(stepper.currentPosition()) < targetPosition ) {
+         // constant speed - no acceleration
+         if ( stepper.runSpeed() ) {
+            ++stepsTaken;
+         }								
+      } else if ( stepsTaken == targetPosition ) {
+         // target reached without hitting the endstop, so simulate it to initiate next step (if any)
+         plannedMoveEnd = true;					// set when we did NOT hit the limit switch to get here
+         endOfTravel();
+      }
+      break;
+      
+   case CARRIAGE_STOP:
 #if DEBUG >= 1
-			Serial.println(String("*** Traveled ") + String(targetPosition) + String(" steps in ") + String((float)((millis() - travelStart)/1000.0)) + String(" sec"));
+         Serial.println(String("*** Traveled ") + String(targetPosition) + String(" steps in ") + String((float)((millis() - travelStart)/1000.0)) + String(" sec"));
 #endif
-		stepper.stop();
-		stepper.runSpeedToPosition();				// a necessary part of the stop mechanism
-		carriageState = CARRIAGE_PARKED;			// only place this is set other than initial condition
-		stepper.disableOutputs();
-		running = false;
-		if ( travelStart ) {
-			/*
-			 capture elapsed time
-			 almost never zero, but could be  if limit switch is pressed while not moving, for example
-			*/
-			lastRunDuration = millis() - travelStart;
-			travelStart = 0;
-		}
-		if ( timelapse.enabled ) {
-			// end of a move within a timelapse sequence
-			timelapseMove();
-		}
-		if ( homeState.homing ) {
-			// restore previous state at end of a homing move, otherwise UI and stepper params could conflict
-			homeState.homing = false;
-			targetPosition = homeState.lastTargetPosition;
-			targetSpeed = homeState.lastTargetSpeed;
-			endstopAction = homeState.lastEndstopState;
-		}
-		break;
-		
-	case CARRIAGE_TRAVEL_REVERSE:
-		// momentarily stop the motion in the current direction - move flag will be set in the ISR so new (opposite) movement will be initiaited below
-		stepper.stop();
-		stepper.runSpeedToPosition();
-		break;
-		
-	case CARRIAGE_PARKED:
-		// set LED color to match mode button on user interface
-		switch ( sliderMode ) {
+      stepper.stop();
+      stepper.runSpeedToPosition();				// a necessary part of the stop mechanism
+      carriageState = CARRIAGE_PARKED;			// only place this is set other than initial condition
+      stepper.disableOutputs();
+      running = false;
+      if ( travelStart ) {
+         /*
+          capture elapsed time
+          almost never zero, but could be  if limit switch is pressed while not moving, for example
+         */
+         lastRunDuration = millis() - travelStart;
+         travelStart = 0;
+      }
+      if ( timelapse.enabled ) {
+         // end of a move within a timelapse sequence
+         timelapseMove();
+      }
+      if ( homeState.homing ) {
+         // restore previous state at end of a homing move, otherwise UI and stepper params could conflict
+         homeState.homing = false;
+         targetPosition = homeState.lastTargetPosition;
+         targetSpeed = homeState.lastTargetSpeed;
+         endstopAction = homeState.lastEndstopState;
+      }
+      break;
+      
+   case CARRIAGE_TRAVEL_REVERSE:
+      // momentarily stop the motion in the current direction - move flag will be set in the ISR so new (opposite) movement will be initiaited below
+      stepper.stop();
+      stepper.runSpeedToPosition();
+      break;
+      
+   case CARRIAGE_PARKED:
+      // set LED color to match mode button on user interface
+      switch ( sliderMode ) {
       case MOVE_NOT_SET:
             break;
 
-		case MOVE_VIDEO:
+      case MOVE_VIDEO:
          // only change color on a state change. Otherwise we are constantly resetting the state & preventing blinking
          if ( lastColor != LEDColor::CYAN ) {
             led.setColor(LEDColor::CYAN);
             led.setState(LEDState::BLINK_ON);
             lastColor = LEDColor::CYAN;
          }
-			break;
-			
-		case MOVE_TIMELAPSE:
+         break;
+         
+      case MOVE_TIMELAPSE:
          if ( lastColor != LEDColor::MAGENTA ) {
             led.setColor(LEDColor::MAGENTA);
             led.setState(LEDState::BLINK_ON);
             lastColor = LEDColor::MAGENTA;
          }
-			break;
-			
-		case MOVE_DISABLED:
-		default:
+         break;
+         
+      case MOVE_DISABLED:
+      default:
          if ( lastColor != LEDColor::RED ) {
             led.setColor(LEDColor::RED);
             led.setState(LEDState::BLINK_ON);
             lastColor = LEDColor::RED;
          }
-			break;
-		}
-		// FALLTHRU
-	default:
-			break;
-	}
+         break;
+      }
+      // FALLTHRU
+   default:
+         break;
+   }
    //INFO(F("LED state"), led.getState());
-	
-	// check if it is time to close the debounce window
-	currentTime = millis();
-	if ( debounce && ((currentTime - debounceStart) > BOUNCE_DELAY) ) {
-		debounce = false;
-	}
-	
-	
-	if ( newMove ) {
-		// initiate a new move using current settings
+   
+   // check if it is time to close the debounce window
+   currentTime = millis();
+   if ( debounce && ((currentTime - debounceStart) > BOUNCE_DELAY) ) {
+      debounce = false;
+   }
+   
+   
+   if ( newMove ) {
+      // initiate a new move using current settings
 #if DEBUG >= 1
-		Serial.println(String(">>> Move to ") + String(targetPosition) + String(" at speed ") + String(targetSpeed) + String( " direction ") + String(clockwise));
+      Serial.println(String(">>> Move to ") + String(targetPosition) + String(" at speed ") + String(targetSpeed) + String( " direction ") + String(clockwise));
 #endif
-		stepper.setCurrentPosition(0);
-		stepper.moveTo(targetPosition);
-		stepper.setSpeed(clockwise ? targetSpeed : -targetSpeed);
-		if ( carriageState == CARRIAGE_PARKED ) {
-			// enable the motor & controller only if it had been turned off
-			stepper.enableOutputs();
-		}
-		carriageState = CARRIAGE_TRAVEL;
-		travelStart = millis();
-		running = true;
-		stepsTaken = 0;
+      stepper.setCurrentPosition(0);
+      stepper.moveTo(targetPosition);
+      stepper.setSpeed(clockwise ? targetSpeed : -targetSpeed);
+      if ( carriageState == CARRIAGE_PARKED ) {
+         // enable the motor & controller only if it had been turned off
+         stepper.enableOutputs();
+      }
+      carriageState = CARRIAGE_TRAVEL;
+      travelStart = millis();
+      running = true;
+      stepsTaken = 0;
       led.setColor(LEDColor::GREEN);
       led.setState(LEDState::ON);
       lastColor = LEDColor::GREEN;                      // must set to force LED change in CARRIAGE_PARKED state at end of move
-		newMove = false;
-		if ( (digitalRead(LIMIT_MOTOR) == LOW) || (digitalRead(LIMIT_END) == LOW) ) {
-			//ignore spurrious limit switch triggers when moving off the switch by closing the debounce window at start of the move 
-			debounce = true;
-			debounceStart = millis();
-		}
-	}
-	timer.run();
+      newMove = false;
+      if ( (digitalRead(LIMIT_MOTOR) == LOW) || (digitalRead(LIMIT_END) == LOW) ) {
+         //ignore spurrious limit switch triggers when moving off the switch by closing the debounce window at start of the move 
+         debounce = true;
+         debounceStart = millis();
+      }
+   }
+   timer.run();
    if ( userConnected ) {
       ArduinoOTA.handle();
    }

@@ -1,7 +1,7 @@
 /*
    TABS=3
 
-	WiFi Camera Slider Controller common definitions
+   WiFi Camera Slider Controller common definitions
 
    Copyright 2016 Rob Redford
    This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
@@ -40,23 +40,23 @@ typedef enum:uint8_t { S_SHUTTER, S_MOVE, S_DELAY } TL_State;
 
 // state data for carriage homing move
 typedef struct {
-	bool				homing;					         // indicates a home move action
-	EndstopMode		lastEndstopState;		         // saved endstop state
-	long				lastTargetPosition;	         // saved stepper position target
-	float				lastTargetSpeed;		         // saved target speed
+   bool				homing;					         // indicates a home move action
+   EndstopMode		lastEndstopState;		         // saved endstop state
+   long				lastTargetPosition;	         // saved stepper position target
+   float				lastTargetSpeed;		         // saved target speed
 } Home_State;
 
 // timelapse move inputs, parameters, state
 typedef struct {
-	bool		enabled;								      // enable timelapse movement
-	int		totalDistance;						      // total distance traveled for the timelapse sequence (user input)
-	int		totalDuration;						      // total timelapse duration (user input)
-	int		totalImages;						      // total number of images to take (user input)
-	int		moveDistance;						      // distance to move in each interval
-	int		moveInterval;						      // delay in sec between moves
-	int		imageCount;							      // realtime shutter activation count
-	uint32_t	moveStartTime;						      // when move was initiated
-	TL_State	state;								      // state for FSM
+   bool		enabled;								      // enable timelapse movement
+   int		totalDistance;						      // total distance traveled for the timelapse sequence (user input)
+   int		totalDuration;						      // total timelapse duration (user input)
+   int		totalImages;						      // total number of images to take (user input)
+   int		moveDistance;						      // distance to move in each interval
+   int		moveInterval;						      // delay in sec between moves
+   int		imageCount;							      // realtime shutter activation count
+   uint32_t	moveStartTime;						      // when move was initiated
+   TL_State	state;								      // state for FSM
 } TL_Data;
 
 #endif
