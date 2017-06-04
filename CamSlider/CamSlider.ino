@@ -360,6 +360,7 @@ void loop ( void ) {
        ==> we need to check the absolute value of position rather than relying on distanceToGo() which
        always increases regardless of direction (since it is subtracting a negative number in CCW rotation)
       */
+      led.setState(LEDState::ON);            // workaround for LED timing issue where LED may remain off when stae changed from blinking to OFF
       if ( abs(stepper.currentPosition()) < targetPosition ) {
          // constant speed - no acceleration
          if ( stepper.runSpeed() ) {
