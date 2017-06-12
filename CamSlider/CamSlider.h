@@ -19,7 +19,7 @@
 #define INCHES_PER_MM		   25.4
 #define HS24_MAX_SPEED		   592.0					// in steps/sec set using calculator at http://www.daycounter.com/Calculators/Stepper-Motor-Calculator.phtml
 
-#define MAX_TRAVEL_DISTANCE	120				   // maximum possible travel distance (inches)
+#define MAX_TRAVEL_DISTANCE	110				   // (just a bit longer than the) maximum possible travel distance (inches). assuming 10' pipes
 #define MAX_TRAVEL_TIME			10800				   // maximum possible travel duration (sec)
 #define MAX_IMAGES				2000				   // maximum number of images (timelapse mode)
 #define CARR_SETTLE_MSEC		2250 				   // delay to stabilize carriage before triggering shutter

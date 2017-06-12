@@ -82,6 +82,7 @@ volatile unsigned long 	currentTime = 0;							// set in loop() so we don't have
 volatile unsigned long	debounceStart = 0;						// start of debounce window
 volatile bool				plannedMoveEnd = false;					// true if calling endOfTravel for a planned move termination
 
+uint32_t                maxDistance = MAX_TRAVEL_DISTANCE;  // maximum slider length
 long							targetPosition = 0;						// inches to travel
 float							targetSpeed = 0.0;						// speed in steps/second
 unsigned long				travelStart = 0;							// start of curent carriage movement
@@ -131,7 +132,8 @@ SimpleTimer timer;														// for timelapse mode
 extern 	MoveMode	sliderMode;											// input enable flag
 extern 	TL_Data 	timelapse;											// data for timelapse moves
 extern	Home_State homeState;										// saved state for homing moves
-extern   bool userConnected;
+extern   bool calibrating;                                  // calibration state flag
+extern   bool userConnected;                                // true when user has connected via a device
 
 extern void setupWiFi(void);
 extern void WiFiService(void);
@@ -152,6 +154,7 @@ void fatalError ( const LEDColor color ) {
 
 /*
  endstop ISR (used for both endstops and end of planned moves (e.g. shorter distances that do not hit the limit switch))
+ for planned moves, this fcn is called directly.
  set flags & state to be used in loop()
  we clear the debounce flag after the debounce interval expires in loop() if this is called by an interrupt
 */
@@ -177,7 +180,7 @@ void endOfTravel ( void ) {
          // ZZZ - better to continue with the current move rather than initiatiating a new one ??? ZZZ
          carriageState = CARRIAGE_TRAVEL_REVERSE;
          clockwise = !clockwise;
-         newMove = true;										// execute the same move parameters in the opposite direction
+         newMove = true;										// execute the current move parameters in the opposite direction
          break;
          
       case ONE_CYCLE:
@@ -185,7 +188,16 @@ void endOfTravel ( void ) {
          carriageState = CARRIAGE_TRAVEL_REVERSE;
          endstopAction = STOP_HERE;							// stop next time
          clockwise = !clockwise;
-         newMove = true;
+         newMove = true;                              // execute the current move parameters in the opposite direction                        
+         if ( calibrating ) {
+            /*
+             we just ran out to the end of the slider after a homing move
+             capture the actual distance moved
+             note that homing flag is still set, so the move initiated above will complete the homing move
+            */
+            maxDistance = STEPS_TO_INCHES(stepsTaken);
+            calibrating = false;
+         }
          break;
       
       default:
@@ -306,6 +318,28 @@ void timelapseMove ( void ) {
    }
 }
 
+/* 
+ handle homing and calibration states (called at end of a homing movement)
+ */
+void handleHoming (void) {
+   // if calibration routine is active, then we just homed the carriage, so the next step is to run out to the end of the slider
+   if ( calibrating ) {
+      // we clear the calibration flag when we hit the endstop
+      targetPosition = (long)INCHES_TO_STEPS(MAX_TRAVEL_DISTANCE);
+      targetSpeed = HS24_MAX_SPEED;
+      endstopAction = ONE_CYCLE;
+      clockwise = true;							// away from the motor
+      newMove = true;
+   } else {
+      // restore previous state at end of a homing move, otherwise UI and stepper params could conflict
+      homeState.homing = false;
+      targetPosition = homeState.lastTargetPosition;
+      targetSpeed = homeState.lastTargetSpeed;
+      endstopAction = homeState.lastEndstopState;
+      newMove = false;                     // handles the case when homing is requested but already on the motor endstop
+   }
+}
+
 /*
  LOOP
 */
@@ -391,15 +425,12 @@ void loop ( void ) {
          travelStart = 0;
       }
       if ( timelapse.enabled ) {
-         // end of a move within a timelapse sequence
+         // end of a move within a timelapse sequence - do the next sequence
          timelapseMove();
       }
+      // homing & calibration
       if ( homeState.homing ) {
-         // restore previous state at end of a homing move, otherwise UI and stepper params could conflict
-         homeState.homing = false;
-         targetPosition = homeState.lastTargetPosition;
-         targetSpeed = homeState.lastTargetSpeed;
-         endstopAction = homeState.lastEndstopState;
+         handleHoming();
       }
       break;
       
@@ -417,7 +448,7 @@ void loop ( void ) {
 
       case MOVE_VIDEO:
          // only change color on a state change. Otherwise we are constantly resetting the state & preventing blinking
-         if ( lastColor != LEDColor::CYAN ) {
+         if ( (lastColor != LEDColor::CYAN) || (led.getState() == LEDState::OFF) ) {
             led.setColor(LEDColor::CYAN);
             led.setState(LEDState::BLINK_ON);
             lastColor = LEDColor::CYAN;
@@ -425,7 +456,7 @@ void loop ( void ) {
          break;
          
       case MOVE_TIMELAPSE:
-         if ( lastColor != LEDColor::MAGENTA ) {
+         if ( (lastColor != LEDColor::MAGENTA) || (led.getState() == LEDState::OFF) ) {
             led.setColor(LEDColor::MAGENTA);
             led.setState(LEDState::BLINK_ON);
             lastColor = LEDColor::MAGENTA;
@@ -434,7 +465,7 @@ void loop ( void ) {
          
       case MOVE_DISABLED:
       default:
-         if ( lastColor != LEDColor::RED ) {
+         if ( (lastColor != LEDColor::RED) || (led.getState() == LEDState::OFF) ) {
             led.setColor(LEDColor::RED);
             led.setState(LEDState::BLINK_ON);
             lastColor = LEDColor::RED;
@@ -453,31 +484,40 @@ void loop ( void ) {
       debounce = false;
    }
    
-   
+   // *********************** MOVE ENGINE **********************************************
    if ( newMove ) {
-      // initiate a new move using current settings
+      // first ensure we are not already on an endstop
+      if ( !(((digitalRead(LIMIT_MOTOR) == LOW) && !clockwise) || ((digitalRead(LIMIT_END) == LOW) && clockwise)) ) {
+         // initiate a new move using current settings
 #if DEBUG >= 1
-      Serial.println(String(">>> Move to ") + String(targetPosition) + String(" at speed ") + String(targetSpeed) + String( " direction ") + String(clockwise));
+         Serial.println(String(">>> Move to ") + String(targetPosition) + String(" at speed ") + String(targetSpeed) + String(" direction ") + String(clockwise));
 #endif
-      stepper.setCurrentPosition(0);
-      stepper.moveTo(targetPosition);
-      stepper.setSpeed(clockwise ? targetSpeed : -targetSpeed);
-      if ( carriageState == CARRIAGE_PARKED ) {
-         // enable the motor & controller only if it had been turned off
-         stepper.enableOutputs();
-      }
-      carriageState = CARRIAGE_TRAVEL;
-      travelStart = millis();
-      running = true;
-      stepsTaken = 0;
-      led.setColor(LEDColor::GREEN);
-      led.setState(LEDState::ON);
-      lastColor = LEDColor::GREEN;                      // must set to force LED change in CARRIAGE_PARKED state at end of move
-      newMove = false;
-      if ( (digitalRead(LIMIT_MOTOR) == LOW) || (digitalRead(LIMIT_END) == LOW) ) {
-         //ignore spurrious limit switch triggers when moving off the switch by closing the debounce window at start of the move 
-         debounce = true;
-         debounceStart = millis();
+         stepper.setCurrentPosition(0);
+         stepper.moveTo(targetPosition);
+         stepper.setSpeed(clockwise ? targetSpeed : -targetSpeed);
+         if ( carriageState == CARRIAGE_PARKED ) {
+            // enable the motor & controller only if it had been turned off
+            stepper.enableOutputs();
+         }
+         carriageState = CARRIAGE_TRAVEL;
+         travelStart = millis();
+         running = true;
+         stepsTaken = 0;
+         led.setColor(LEDColor::GREEN);
+         led.setState(LEDState::ON);
+         lastColor = LEDColor::GREEN;                      // must set to force LED change in CARRIAGE_PARKED state at end of move
+         newMove = false;
+         if ( (digitalRead(LIMIT_MOTOR) == LOW) || (digitalRead(LIMIT_END) == LOW) ) {
+            //ignore spurrious limit switch triggers when moving off the switch by closing the debounce window at start of the move 
+            debounce = true;
+            debounceStart = millis();
+         }
+      } else if ( homeState.homing ) {
+         // if we're homing or calibrating while on the endstop, we still need to handle the homing state changes and/or the calibration runout
+         handleHoming();
+      } else {
+         // only possible movement is the opposite direction, so change it for the user
+         clockwise = !clockwise;
       }
    }
    timer.run();

@@ -102,13 +102,14 @@ String	cssFile;													// String copy of CSS file segment
 #define ACTION_REFRESH			"REFRESH_BTN="				// refresh display
 #define ACTION_FORGET         "FORGET_BTN="           // clear saved user credentials
 #define ACTION_HOME				"HOME_BTN="					// home the carriage
+#define ACTION_CALIBRATE      "CALI_BTN="             // calibrate slider length
 
 typedef enum:uint8_t { 
    NULL_ACTION, IGNORE, SLIDER_STATE, ENDSTOP_STATE, SET_DISTANCE, SET_DURATION, SET_TL_DISTANCE,
-   SET_TL_DURATION, SET_TL_IMAGES, SET_DIRECTION, START_STATE, HOME_CARRIAGE, FORGET, 
+   SET_TL_DURATION, SET_TL_IMAGES, SET_DIRECTION, START_STATE, HOME_CARRIAGE, CALIBRATE, FORGET, 
 } T_Action;
 
-#define ACTION_TABLE_SIZE		15
+#define ACTION_TABLE_SIZE		16
 const struct {	
    char 		action[20];
    T_Action	type;
@@ -123,6 +124,7 @@ const struct {
    {ACTION_DIRECTION,	SET_DIRECTION},
    {ACTION_START,			START_STATE},
    {ACTION_HOME,			HOME_CARRIAGE},
+   {ACTION_CALIBRATE,	CALIBRATE},
    {ACTION_FORGET,      FORGET},
    {ACTION_REFRESH,		NULL_ACTION},			// null actions must be at the end so they don't intercept ones above
    {"GET / ",				NULL_ACTION},					
@@ -171,11 +173,15 @@ TL_Data timelapse = {false, 0, 0, 0, 0, 0, 0, 0, S_SHUTTER};
 // saved state for homing moves
 Home_State homeState = { false, STOP_HERE, 0, 0.0 };				// these initial values are not used
 
+bool calibrating = false;                // true when calibrating slider distance
+
 
 bool userConnected = false;              // true once user is connected
 
 extern void fatalError(const LEDColor color);
 extern void timelapseMove(void);
+
+extern uint32_t maxDistance;             // maximum slider travel distance in inches
 
 /*
 Create and return a unique WiFi SSID using the ESP8266 WiFi MAC address
@@ -683,6 +689,9 @@ void sendResponse ( const T_Action actionType, const String &url ) {
          }
          break;
 
+      case CALIBRATE:
+         calibrating = true;
+         // fallthru
       case HOME_CARRIAGE:
          // save current stepper params to restore after move is complete
          homeState.homing = true;
@@ -711,7 +720,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
          if ( idx ) {
             String value = url.substring(idx+1);
             
-            video.travelDistance = constrain(value.toInt(), 1, MAX_TRAVEL_DISTANCE);
+            video.travelDistance = constrain(value.toInt(), 1, maxDistance);
             targetPosition = (long)INCHES_TO_STEPS(video.travelDistance);
             if ( video.travelDuration ) {
                targetSpeed = constrain((float)(targetPosition / video.travelDuration), 1.0, HS24_MAX_SPEED);	// steps per second
@@ -752,7 +761,7 @@ void sendResponse ( const T_Action actionType, const String &url ) {
          if ( idx ) {
             String value = url.substring(idx+1);
             
-            timelapse.totalDistance = constrain(value.toInt(), 1, MAX_TRAVEL_DISTANCE);
+            timelapse.totalDistance = constrain(value.toInt(), 1, maxDistance);
 #if DEBUG >= 2
             Serial.println(String("Total dist: ") + String(timelapse.totalDistance) + String(" inches "));
 #endif
@@ -820,33 +829,36 @@ void sendResponse ( const T_Action actionType, const String &url ) {
          break;
       }
 
-      switch ( endstopAction ) {
-      case STOP_HERE:
-         indexModified.replace(String(ENDSTOP_VAR), String("Stop"));
-         indexModified.replace(String(ENDSTOP_CSS), String(CSS_RED));
-         break;
-         
-      case REVERSE:
-         indexModified.replace(String(ENDSTOP_VAR), String("Reverse"));
-         indexModified.replace(String(ENDSTOP_CSS), String(CSS_PURPLE));
-         break;
-         
-      case ONE_CYCLE:
-         indexModified.replace(String(ENDSTOP_VAR), String("One Cycle"));
-         indexModified.replace(String(ENDSTOP_CSS), String(CSS_BLUE));
-         break;
-         
-      default:
-         break;
-      }
-      
-      indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Away") : String("Towards"));
-      
-      // common colors
-      if ( clockwise ) {
-         indexModified.replace(String(DIRECTION_CSS), String(CSS_BLUE));
-      } else {
-         indexModified.replace(String(DIRECTION_CSS), String(CSS_ORANGE));
+      if ( (sliderMode != MOVE_DISABLED) && (sliderMode != MOVE_NOT_SET) ) {
+         // thiese fields not present on this screen
+         switch ( endstopAction ) {
+         case STOP_HERE:
+            indexModified.replace(String(ENDSTOP_VAR), String("Stop"));
+            indexModified.replace(String(ENDSTOP_CSS), String(CSS_RED));
+            break;
+
+         case REVERSE:
+            indexModified.replace(String(ENDSTOP_VAR), String("Reverse"));
+            indexModified.replace(String(ENDSTOP_CSS), String(CSS_PURPLE));
+            break;
+
+         case ONE_CYCLE:
+            indexModified.replace(String(ENDSTOP_VAR), String("One Cycle"));
+            indexModified.replace(String(ENDSTOP_CSS), String(CSS_BLUE));
+            break;
+
+         default:
+            break;
+         }
+
+         indexModified.replace(String(DIRECTION_VAR), clockwise ? String("Away") : String("Towards"));
+
+         // common colors
+         if ( clockwise ) {
+            indexModified.replace(String(DIRECTION_CSS), String(CSS_BLUE));
+         } else {
+            indexModified.replace(String(DIRECTION_CSS), String(CSS_ORANGE));
+         }
       }
 
       // mode-specific
