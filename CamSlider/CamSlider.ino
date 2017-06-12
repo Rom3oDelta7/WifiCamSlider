@@ -195,7 +195,7 @@ void endOfTravel ( void ) {
              capture the actual distance moved
              note that homing flag is still set, so the move initiated above will complete the homing move
             */
-            maxDistance = STEPS_TO_INCHES(stepsTaken);
+            maxDistance = STEPS_TO_INCHES(stepper.currentPosition());
             calibrating = false;
          }
          break;
