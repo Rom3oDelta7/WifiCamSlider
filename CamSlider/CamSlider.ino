@@ -10,7 +10,7 @@
    Prior to running this sketch, the HTML file must be loaded into the ESP8266 SPIFFS file system.
    Currently, the instructions for installing and running the uplaod tool can be found here: http://esp8266.github.io/Arduino/versions/2.3.0/doc/filesystem.html
 
-   Copyright 2016 Rob Redford
+   Copyright 2016/2017 Rob Redford
    This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
    To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/.
    
