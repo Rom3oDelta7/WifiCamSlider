@@ -3,7 +3,7 @@
 
    WiFi Camera Slider Controller common definitions
 
-   Copyright 2016 Rob Redford
+   Copyright 2016/2017 Rob Redford
    This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
    To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/.
    
